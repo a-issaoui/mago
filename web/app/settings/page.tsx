@@ -4,6 +4,7 @@ import { useState } from "react";
 import { RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Choice } from "@/components/choice";
+import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useTitle } from "@/hooks/use-title";
@@ -46,7 +47,7 @@ const RESYNC = [
 function Group({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   const id = `${title.toLowerCase().replace(/\W+/g, "-")}-heading`;
   return (
-    <section aria-labelledby={id} className="rounded-3xl border border-line bg-surface p-5 shadow-sm sm:p-6">
+    <section id={id.replace("-heading", "")} aria-labelledby={id} className="panel scroll-mt-24 p-5 sm:p-6">
       <h2 id={id} className="text-lg font-semibold">
         {title}
       </h2>
@@ -68,7 +69,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-const numberField = "tabular h-10 w-28 rounded-full border border-line bg-night/40 px-4 text-sm outline-none transition-[border-color,box-shadow] focus:border-murex focus:ring-4 focus:ring-murex/15";
+const numberField = "field tabular w-28 px-4";
 
 export default function SettingsPage() {
   useTitle("Settings");
@@ -108,19 +109,31 @@ export default function SettingsPage() {
     );
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="display text-[34px] sm:text-[44px]">Settings</h1>
-      <p className="mt-2 text-sm text-mute">Changes are saved as you make them.</p>
+    <div>
+      <PageHeader title="Settings" note="Changes are saved as you make them and apply to the next video." />
+      <div className="grid items-start gap-x-10 gap-y-4 xl:grid-cols-[200px_minmax(0,760px)]">
+      <nav aria-label="Settings sections" className="hidden xl:sticky xl:top-24 xl:block">
+        <ul className="space-y-0.5 border-l border-line">
+          {["Transcribing", "Pace", "New videos and repeats", "This computer"].map((name) => (
+            <li key={name}>
+              <a href={`#${name.toLowerCase().replace(/\W+/g, "-")}`} className="-ml-px block border-l-2 border-transparent py-1.5 pl-4 text-sm text-mute hover:border-murex hover:text-ink">
+                {name}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <div className="min-w-0">
       {settings.error && !values && <p className="mt-4 text-amber">{settings.error}</p>}
       {!values && !settings.error && (
-        <div className="mt-6 space-y-5">
+        <div className="space-y-5">
           <div className="skeleton h-64 rounded-3xl" />
           <div className="skeleton h-48 rounded-3xl" />
         </div>
       )}
 
       {values && (
-        <div className="mt-6 space-y-5">
+        <div className="space-y-5">
           <Group title="Transcribing" note="Used only for videos that have no captions.">
             <Field label="Whisper model" hint="Bigger is more accurate and slower.">
               <Choice label="Whisper model" className="w-full sm:w-80" value={values.whisper_model} onChange={(value) => save({ whisper_model: value })} items={MODELS} />
@@ -183,6 +196,8 @@ export default function SettingsPage() {
           </Group>
         </div>
       )}
+      </div>
+      </div>
     </div>
   );
 }

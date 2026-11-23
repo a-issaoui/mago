@@ -118,7 +118,7 @@ export function CommandPalette() {
                   <span className="line-clamp-2 font-serif text-[15px] leading-snug">{hit.snippet.replace(/<\/?mark>/g, "")}</span>
                   <span className="block truncate text-xs text-muted-foreground">{hit.title}</span>
                 </span>
-                <CommandShortcut className="tabular">{clock(hit.start)}</CommandShortcut>
+                <CommandShortcut className="time">{clock(hit.start)}</CommandShortcut>
               </CommandItem>
             ))}
             <CommandItem value="all-results" onSelect={() => go(`/search?q=${encodeURIComponent(query)}`)}>

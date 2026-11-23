@@ -3,7 +3,8 @@
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronRightIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, SearchIcon } from "lucide-react";
+import { CopyIcon, DownloadIcon, ExternalLinkIcon, SearchIcon } from "lucide-react";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { PlatformMark } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
 import { Player, type PlayerHandle } from "@/components/player";
@@ -83,7 +84,7 @@ const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, o
       <button
         type="button"
         onClick={() => onSeek(paragraph.start)}
-        className="tabular -ml-1.5 mt-[0.2em] flex h-7 items-center self-start rounded-md px-1.5 font-sans text-xs font-medium text-mute hover:bg-raised hover:text-ink"
+        className="time -ml-1.5 mt-[0.25em] flex h-7 items-center self-start rounded-md px-1.5 text-xs font-medium text-mute hover:bg-raised hover:text-murex"
         aria-label={`Play from ${clock(paragraph.start)}`}
       >
         {clock(paragraph.start)}
@@ -203,23 +204,14 @@ function VideoView() {
 
   return (
     <div>
-      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1 text-sm font-medium text-mute">
-        <Link href="/" className="hover:text-ink">
-          Library
-        </Link>
-        {inChannel && (
-          <>
-            <ChevronRightIcon className="size-3.5" />
-            <Link href={`/c/${video.source_id}`} className="truncate hover:text-ink">
-              {video.source_title}
-            </Link>
-          </>
-        )}
-      </nav>
+      <Breadcrumb
+        trail={[{ href: "/", label: "Library" }, ...(inChannel ? [{ href: `/c/${video.source_id}`, label: video.source_title ?? "Channel" }] : [])]}
+        current={video.title}
+      />
 
       <div className="grid gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {/* On a phone this column dissolves, so the player can stick under the header while the transcript scrolls. */}
-        <div className="max-lg:contents lg:sticky lg:top-20 lg:self-start">
+        <div className="max-lg:contents lg:sticky lg:top-24 lg:self-start">
           <div ref={playerBox} className="max-lg:sticky max-lg:top-14 max-lg:z-20 max-lg:-mx-4 max-lg:bg-night max-lg:px-4 max-lg:py-2">
             {done ? (
               <Player ref={player} platform={video.platform} videoId={video.platform_video_id} shape={video.shape} start={start} title={video.title ?? "Video"} onTime={onTime} />
@@ -249,7 +241,7 @@ function VideoView() {
               </a>
             </p>
             {data.original && (
-              <p className="mt-4 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
+              <p className="panel mt-4 !rounded-2xl px-4 py-3 text-sm">
                 {video.duplicate_kind === "clip" ? "A clip of " : "Says the same as "}
                 <Link href={`/v/${data.original.id}`} className="font-semibold underline decoration-line underline-offset-4 hover:decoration-current">
                   {data.original.title || "another video"}
@@ -271,7 +263,7 @@ function VideoView() {
               </p>
             )}
             {data.channel && (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+              <div className="panel mt-4 flex flex-wrap items-center justify-between gap-3 !rounded-2xl px-4 py-3">
                 <p className="min-w-0 text-sm">
                   <span className="block truncate font-semibold">{data.channel.name}</span>
                   <span className="block text-mute">
@@ -298,7 +290,7 @@ function VideoView() {
           </h2>
           {done ? (
             <>
-              <div ref={toolbar} className="z-10 -mx-1 flex flex-wrap items-center gap-2 bg-night/90 px-1 py-2 backdrop-blur-xl lg:sticky lg:top-14">
+              <div ref={toolbar} className="z-10 -mx-1 flex flex-wrap items-center gap-2 bg-night/85 px-1 py-2 backdrop-blur-2xl lg:sticky lg:top-16">
                 <label className="relative block min-w-0 flex-1">
                   <span className="sr-only">Find in this transcript</span>
                   <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-mute" />
@@ -307,7 +299,7 @@ function VideoView() {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Find in transcript"
-                    className="h-10 w-full rounded-full border border-line bg-surface pl-10 pr-4 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-mute focus:border-murex focus:ring-4 focus:ring-murex/15"
+                    className="field w-full pl-10 pr-4"
                   />
                 </label>
                 <Button variant="outline" size="lg" className="h-10 px-4" onClick={copy}>
@@ -351,7 +343,7 @@ function VideoView() {
               </div>
             </>
           ) : (
-            <div className="rounded-2xl border border-line bg-surface p-6">
+            <div className="panel p-6">
               <p className="text-lg font-semibold">{statusLabel(video)}</p>
               <p className="mt-1 max-w-prose text-sm text-mute">
                 {video.status === "skipped" && video.duplicate_of

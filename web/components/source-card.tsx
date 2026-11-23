@@ -45,7 +45,7 @@ export function progressText(source: Source): string {
 export function SourceCard({ source }: { source: Source }) {
   const working = Math.max(source.videos_total - source.videos_done - source.videos_failed, 0);
   return (
-    <Link href={`/c/${source.id}`} className="card group block overflow-hidden rounded-2xl border border-line bg-surface shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-murex/40 hover:shadow-md">
+    <Link href={`/c/${source.id}`} className="panel group block overflow-hidden transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-murex hover:shadow-[0_18px_36px_-20px_color-mix(in_oklab,var(--murex)_70%,transparent)]">
       <Banner source={source} className="h-24" />
       <div className="relative px-4 pb-4">
         <Avatar source={source} className="-mt-6 size-14" />

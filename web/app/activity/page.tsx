@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PauseIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
+import { PageHeader } from "@/components/page-header";
 import { Pager, pageOf } from "@/components/pager";
 import { Legend, Progress } from "@/components/progress";
 import { Thumb } from "@/components/thumb";
@@ -53,7 +54,7 @@ function Section({ id, title, count, action, children }: { id: string; title: st
   return (
     <section className="mt-10" aria-labelledby={id}>
       <div className="flex items-center justify-between gap-3">
-        <h2 id={id} className="text-xl font-semibold">
+        <h2 id={id} className="text-lg font-semibold tracking-tight">
           {title} {count != null && <span className="tabular font-normal text-mute">{count}</span>}
         </h2>
         {action}
@@ -108,19 +109,25 @@ export default function ActivityPage() {
         : "The worker is running. Whisper loads when a video needs it.";
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="display text-[34px] sm:text-[44px]">Activity</h1>
-      <p className="mt-2 flex items-start gap-2 text-sm text-mute">
-        {worker && <span className={`mt-1.5 size-2 shrink-0 rounded-full ${worker.alive ? "bg-sea" : "bg-amber"}`} />}
-        <span>
-          {engine}
-          {!connected && snapshot && " Live updates are reconnecting."}
-        </span>
-      </p>
-      {error && !data && <p className="mt-4 text-amber">{error}</p>}
+    <div>
+      <PageHeader
+        title="Activity"
+        note={
+          <span className="flex items-start gap-2">
+            {worker && <span className={`mt-1.5 size-2 shrink-0 rounded-full ${worker.alive ? "bg-sea" : "bg-amber"}`} />}
+            <span>
+              {engine}
+              {!connected && snapshot && " Live updates are reconnecting."}
+            </span>
+          </span>
+        }
+      />
+      {error && !data && <p className="mb-4 text-amber">{error}</p>}
+      <div className="grid items-start gap-x-10 gap-y-2 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="xl:sticky xl:top-24 xl:order-2">
 
       {platforms && total > 0 && (
-        <section aria-label="Overall progress" className="mt-7 rounded-3xl border border-line bg-surface p-5 shadow-sm sm:p-6">
+        <section aria-label="Overall progress" className="panel p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
             <div>
               <p className="tabular text-xl font-semibold">{`${sum("done")} of ${total} videos transcribed`}</p>
@@ -145,7 +152,7 @@ export default function ActivityPage() {
           <div className="mt-3">
             <Legend done={sum("done")} working={sum("working")} failed={sum("failed")} paused={allStopped} />
           </div>
-          <div className="mt-5 grid gap-x-6 gap-y-5 border-t border-line pt-5 sm:grid-cols-2">
+          <div className="mt-5 grid gap-x-6 gap-y-5 border-t border-line pt-5 sm:grid-cols-2 xl:grid-cols-1">
             {names.filter((name) => platforms[name].total > 0).map((name) => {
               const pause = pauses.find((item) => item.platform === name);
               const isStopped = stopped.includes(name);
@@ -177,12 +184,14 @@ export default function ActivityPage() {
         </section>
       )}
 
+      </div>
+      <div className="min-w-0 xl:order-1 [&>section:first-child]:mt-8 xl:[&>section:first-child]:mt-0">
       <Section id="now-heading" title="Now">
         {idle && <p className="mt-2 text-mute">Nothing is running. Paste a link in the library to add videos.</p>}
         {!idle && active.length === 0 && listing.length === 0 && (
           <p className="mt-2 text-mute">
             {stopped.length > 0 && pauses.length + stopped.length >= names.filter((name) => platforms?.[name].working).length
-              ? "Stopped. Press Resume above to carry on."
+              ? "Stopped. Press Resume downloads to carry on."
               : pauses.length > 0
                 ? "Waiting. The platforms with videos left are paused; see above for when they resume."
                 : "Waiting a few seconds before the next video."}
@@ -296,6 +305,8 @@ export default function ActivityPage() {
           <Pager label="Left out videos" className="mt-5" page={Math.min(skippedPage, pageOf(skipped, skippedPage, LIST).pageCount)} pageCount={pageOf(skipped, skippedPage, LIST).pageCount} onChange={setSkippedPage} />
         </Section>
       )}
+      </div>
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { SearchIcon } from "lucide-react";
 import { Choice } from "@/components/choice";
 import { PlatformMark } from "@/components/icons";
+import { PageHeader } from "@/components/page-header";
 import { Pager } from "@/components/pager";
 import { Pills } from "@/components/pills";
 import { Thumb } from "@/components/thumb";
@@ -83,9 +84,9 @@ function SearchView() {
         : `${lineCount} ${lineCount === 1 ? "line" : "lines"} in ${groups.length} ${groups.length === 1 ? "video" : "videos"}`;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="display mb-5 text-[34px] sm:text-[44px]">Search</h1>
-      <label className="flex h-14 items-center gap-3 rounded-[22px] border border-line bg-surface px-5 shadow-sm transition-[border-color,box-shadow] focus-within:border-murex focus-within:ring-4 focus-within:ring-murex/15 sm:h-16 sm:px-6">
+    <div className="max-w-4xl">
+      <PageHeader title="Search" note="Find the moment something was said. Each result opens the video at that second." />
+      <label className="flex h-14 items-center gap-3 rounded-[22px] border border-line-strong bg-surface px-5 shadow-[var(--shadow-panel)] transition-[border-color,box-shadow] focus-within:border-murex focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--murex)_22%,transparent)] sm:h-16 sm:px-6">
         <SearchIcon className="size-5 shrink-0 text-mute" />
         <span className="sr-only">Search everything that was said</span>
         <input
@@ -171,7 +172,7 @@ function SearchView() {
                 {lines.slice(0, 5).map((line) => (
                   <li key={line.start}>
                     <Link href={`/v/${line.video_id}?t=${Math.floor(line.start)}`} className="grid min-h-9 grid-cols-[3.4rem_minmax(0,1fr)] items-baseline gap-x-1 rounded-lg py-1.5 transition-colors hover:bg-surface sm:-mx-2 sm:px-2">
-                      <span className="tabular text-xs font-semibold text-murex">{clock(line.start)}</span>
+                      <span className="time text-xs font-semibold text-murex">{clock(line.start)}</span>
                       <span className="font-serif text-[16px] leading-relaxed">
                         <Snippet text={line.snippet} />
                       </span>

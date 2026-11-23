@@ -12,7 +12,7 @@ export function Pills<T extends string>({ value, onChange, options, label }: { v
           type="button"
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
-          className="tabular flex h-10 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium text-mute transition-colors hover:border-ink/30 hover:text-ink aria-pressed:border-transparent aria-pressed:bg-ink aria-pressed:text-night"
+          className="tabular flex h-10 items-center gap-2 rounded-full border border-line-strong px-4 text-sm font-medium text-mute transition-colors hover:border-murex hover:text-ink aria-pressed:border-transparent aria-pressed:bg-ink aria-pressed:text-night"
         >
           {option.icon}
           {option.label}

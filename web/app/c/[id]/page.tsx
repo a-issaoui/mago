@@ -3,8 +3,9 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeftIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, MoreHorizontalIcon, RefreshCwIcon, RotateCcwIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { CopyIcon, DownloadIcon, ExternalLinkIcon, MoreHorizontalIcon, RefreshCwIcon, RotateCcwIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { Choice } from "@/components/choice";
 import { PlatformMark } from "@/components/icons";
 import { Pager } from "@/components/pager";
@@ -97,12 +98,9 @@ function ChannelView() {
 
   return (
     <div>
-      <Link href="/" className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-mute hover:text-ink">
-        <ChevronLeftIcon className="size-4" />
-        Library
-      </Link>
+      <Breadcrumb trail={[{ href: "/", label: "Library" }]} current={data?.title || data?.handle} />
 
-      <header className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
+      <header className="panel overflow-hidden">
         {data ? <Banner source={data} className="h-28 sm:h-44" /> : <div className="skeleton h-28 rounded-none sm:h-44" />}
         <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-end sm:px-7 sm:pb-6">
           {data ? <Avatar source={data} className="-mt-9 size-20 sm:-mt-10 sm:size-24" /> : <div className="skeleton -mt-9 size-20 rounded-full sm:size-24" />}
@@ -173,8 +171,8 @@ function ChannelView() {
         )}
       </header>
 
-      <div id="videos-top" className="scroll-mt-14" />
-      <div className="sticky top-14 z-20 -mx-4 mb-6 mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 bg-night/90 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6">
+      <div id="videos-top" className="scroll-mt-16" />
+      <div className="sticky top-14 z-20 -mx-4 mb-6 mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 bg-night/85 px-4 py-3 backdrop-blur-2xl sm:-mx-6 sm:px-6 lg:top-16 lg:-mx-10 lg:px-10">
         <Pills<Filter>
           label="Show"
           value={status}
@@ -186,8 +184,8 @@ function ChannelView() {
             { value: "failed", label: "Failed", count: problemCount },
           ]}
         />
-        <div className="ml-auto flex items-center gap-2">
-          <label className="relative block">
+        <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto">
+          <label className="relative block min-w-0 flex-1 md:flex-none">
             <span className="sr-only">Filter by title</span>
             <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-mute" />
             <input
@@ -195,7 +193,7 @@ function ChannelView() {
               value={query}
               onChange={(event) => change(setQuery)(event.target.value)}
               placeholder="Filter by title"
-              className="h-10 w-40 rounded-full border border-line bg-surface pl-10 pr-4 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-mute focus:border-murex focus:ring-4 focus:ring-murex/15 sm:w-60"
+              className="field w-full pl-10 pr-4 md:w-60"
             />
           </label>
           <Choice label="Sort" value={sort} onChange={change(setSort)} items={SORTS} />

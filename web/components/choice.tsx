@@ -15,7 +15,7 @@ type Props = {
 export function Choice({ value, onChange, items, label, id, className = "" }: Props) {
   return (
     <Select items={items} value={value} onValueChange={(next) => onChange(String(next ?? ""))}>
-      <SelectTrigger id={id} aria-label={label} className={`h-10 rounded-full bg-surface px-4 ${className}`}>
+      <SelectTrigger id={id} aria-label={label} className={`h-10 rounded-full border-line-strong bg-surface px-4 ${className}`}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent align="end" alignItemWithTrigger={false}>

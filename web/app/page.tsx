@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
 import { Pager } from "@/components/pager";
+import { PageHeader } from "@/components/page-header";
 import { PasteBox } from "@/components/paste-box";
+import { Strip } from "@/components/strip";
 import { Pills } from "@/components/pills";
 import { SourceCard } from "@/components/source-card";
 import { Sheet, VideoCard } from "@/components/video-card";
@@ -48,20 +50,22 @@ function Library() {
   const firstVisit = empty || (!sources.data && !sources.error);
 
   return (
-    <div className="space-y-12 sm:space-y-14">
-      <section className={`max-w-3xl ${firstVisit ? "pt-2 sm:pt-10" : "pt-0"}`}>
+    <div className="space-y-11 sm:space-y-12">
+      <section>
         {firstVisit ? (
-          <>
-            <h1 className="display text-[44px] sm:text-[76px]">Keep what was said</h1>
+          <div className="max-w-3xl pt-2 sm:pt-10">
+            <h1 className="display text-[44px] sm:text-[72px]">Keep what was said</h1>
             <p className="mb-7 mt-4 max-w-xl text-base text-mute sm:text-lg">
               Paste one video or a whole channel. Mago saves the words with their timestamps, so you can search them and read along.
             </p>
-          </>
+          </div>
         ) : (
-          <h1 className="display mb-5 text-[34px] sm:text-[44px]">Library</h1>
+          <PageHeader title="Library" note="Paste a video or a channel to add it. Everything you add is transcribed and searchable." />
         )}
-        <PasteBox onAdded={refresh} />
-        {sources.error && <p className="mt-4 text-sm text-amber">{sources.error}</p>}
+        <div className="max-w-3xl">
+          <PasteBox onAdded={refresh} />
+          {sources.error && <p className="mt-4 text-sm text-amber">{sources.error}</p>}
+        </div>
       </section>
 
       {!empty && sources.data && (
@@ -84,7 +88,7 @@ function Library() {
 
       {working.data && working.data.items.length > 0 && (
         <section aria-labelledby="working-heading" className="!mt-9">
-          <h2 id="working-heading" className="mb-4 flex flex-wrap items-baseline gap-x-2 text-xl font-semibold">
+          <h2 id="working-heading" className="mb-4 flex flex-wrap items-baseline gap-x-2 text-lg font-semibold tracking-tight">
             {stopped.length === 2 ? "Waiting" : "In progress"}
             <span className="tabular font-normal text-mute">{working.data.total}</span>
             {stopped.length > 0 && (
@@ -93,20 +97,20 @@ function Library() {
               </span>
             )}
           </h2>
-          <div className="strip">
+          <Strip label={stopped.length === 2 ? "waiting videos" : "videos in progress"}>
             {working.data.items.map((video) => (
               <VideoCard key={video.id} video={video} showSource />
             ))}
-          </div>
+          </Strip>
         </section>
       )}
 
       {channels.length > 0 && (
         <section aria-labelledby="channels-heading">
-          <h2 id="channels-heading" className="mb-4 text-xl font-semibold">
+          <h2 id="channels-heading" className="mb-4 text-lg font-semibold tracking-tight">
             Channels <span className="tabular font-normal text-mute">{channels.length}</span>
           </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {channels.map((source) => (
               <SourceCard key={source.id} source={source} />
             ))}
@@ -116,20 +120,20 @@ function Library() {
 
       {recent.data && recent.data.items.length > 0 && !recentIsRepeat && (
         <section aria-labelledby="recent-heading">
-          <h2 id="recent-heading" className="mb-4 text-xl font-semibold">
+          <h2 id="recent-heading" className="mb-4 text-lg font-semibold tracking-tight">
             Recently transcribed
           </h2>
-          <div className="strip">
+          <Strip label="recently transcribed videos">
             {recent.data.items.map((video, index) => (
               <VideoCard key={video.id} video={video} showSource eager={index < 6} />
             ))}
-          </div>
+          </Strip>
         </section>
       )}
 
       {singlesShown && singlesShown.items.length > 0 && (
         <section aria-labelledby="singles-heading" ref={singlesTop} className="scroll-mt-20">
-          <h2 id="singles-heading" className="text-xl font-semibold">
+          <h2 id="singles-heading" className="text-lg font-semibold tracking-tight">
             Single videos <span className="tabular font-normal text-mute">{singlesShown.total}</span>
           </h2>
           <p className="mb-4 mt-1 text-sm text-mute">Added on their own, without the rest of their channel.</p>

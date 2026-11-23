@@ -53,7 +53,7 @@ export function Thumb({ path, blur, shape, platform, duration, status, progress 
         </span>
       )}
       {duration != null && duration > 0 && (
-        <span className="tabular absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white">
+        <span className="time absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white">
           {clock(duration)}
         </span>
       )}
@@ -64,7 +64,7 @@ export function Thumb({ path, blur, shape, platform, duration, status, progress 
         </span>
       )}
       {showPlay && !working && !waiting && !unavailable && (
-        <span className="play absolute inset-0 grid place-items-center bg-black/25">
+        <span className="play absolute inset-0 grid place-items-center bg-black/30">
           <span className="grid size-11 place-items-center rounded-full bg-murex text-on-murex shadow-lg">
             <PlayIcon className="size-5 translate-x-px" />
           </span>

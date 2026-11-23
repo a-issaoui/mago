@@ -74,7 +74,7 @@ export function PasteBox({ onAdded }: { onAdded?: () => void }) {
 
   const open = state.step !== "idle";
   return (
-    <div className={`rounded-[22px] border bg-surface shadow-sm transition-[border-color,box-shadow] ${open ? "border-murex/60" : "border-line"} focus-within:border-murex focus-within:ring-4 focus-within:ring-murex/15`}>
+    <div className={`rounded-[22px] border bg-surface shadow-[var(--shadow-panel)] transition-[border-color,box-shadow] ${open ? "border-murex" : "border-line-strong"} focus-within:border-murex focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--murex)_22%,transparent)]`}>
       <label htmlFor="paste" className="sr-only">
         YouTube or TikTok link
       </label>
