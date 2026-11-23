@@ -8,19 +8,19 @@ export const PlayIcon = ({ className }: Props) => (
   </svg>
 );
 
-/** Small platform marks: a screen with a play wedge for YouTube, a note for TikTok. */
+/** Platform badges in each platform's own colours, so the two are told apart at a glance. */
 export const PlatformMark = ({ platform, className }: Props & { platform: "youtube" | "tiktok" }) =>
   platform === "youtube" ? (
-    <svg {...base} className={className}>
-      <rect x="1" y="3" width="14" height="10" rx="3" fill="currentColor" />
-      <path d="M6.6 5.8v4.4L10.4 8 6.6 5.8Z" fill="var(--night)" />
+    <svg {...base} className={className} role="img" aria-label="YouTube">
+      <rect x="0.5" y="2.5" width="15" height="11" rx="3.2" fill="var(--youtube)" />
+      <path d="M6.5 5.4v5.2L11 8 6.5 5.4Z" fill="#fff" />
     </svg>
   ) : (
-    <svg {...base} className={className}>
-      <path
-        d="M9.2 1.5h-2v8.3a1.9 1.9 0 1 1-1.9-1.9c.2 0 .4 0 .6.1V5.9a4 4 0 1 0 3.3 3.9V5.6c.9.7 2 1 3.1 1V4.6a3.1 3.1 0 0 1-3.1-3.1Z"
-        fill="currentColor"
-      />
+    <svg {...base} className={className} role="img" aria-label="TikTok">
+      <rect width="16" height="16" rx="4" fill="#111" />
+      <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#25f4ee" transform="translate(-0.45 0.35)" />
+      <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#fe2c55" transform="translate(0.45 -0.35)" />
+      <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#fff" />
     </svg>
   );
 

@@ -27,6 +27,8 @@ export function Nav() {
   const pathname = usePathname();
   const { snapshot } = useLive();
   const busy = (snapshot?.queued ?? 0) + (snapshot?.active.length ?? 0) + (snapshot?.listing.length ?? 0);
+  const all = snapshot ? snapshot.platforms.youtube.total + snapshot.platforms.tiktok.total : 0;
+  const finished = snapshot ? snapshot.platforms.youtube.done + snapshot.platforms.tiktok.done + snapshot.platforms.youtube.failed + snapshot.platforms.tiktok.failed : 0;
   const isCurrent = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/c/") || pathname.startsWith("/v/") : pathname.startsWith(href));
 
   return (
@@ -58,6 +60,11 @@ export function Nav() {
             <SunMoonIcon className="size-[18px]" />
           </button>
         </div>
+        {busy > 0 && all > 0 && (
+          <div className="absolute inset-x-0 -bottom-px h-0.5" role="progressbar" aria-label="Library transcribed" aria-valuemin={0} aria-valuemax={all} aria-valuenow={finished}>
+            <div className="h-full origin-left bg-murex transition-transform duration-700" style={{ transform: `scaleX(${finished / all})` }} />
+          </div>
+        )}
       </header>
       <nav
         aria-label="Main"

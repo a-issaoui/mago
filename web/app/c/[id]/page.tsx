@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PlatformMark, SyncIcon } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
+import { Legend, Progress } from "@/components/progress";
 import { Avatar, Banner, progressText } from "@/components/source-card";
 import { Sheet, SheetSkeleton } from "@/components/video-card";
 import { api, kindLabel, shortDate, useApi, type Source, type Video } from "@/lib/api";
@@ -63,7 +64,7 @@ export default function ChannelPage() {
             <h1 className="display truncate text-3xl sm:text-5xl">{data?.title || data?.handle || " "}</h1>
             {data && (
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-mute">
-                <PlatformMark platform={data.platform} className="size-3.5" />
+                <PlatformMark platform={data.platform} className="size-4" />
                 <a href={data.url} target="_blank" rel="noopener noreferrer" className="hover:text-ink hover:underline">
                   {data.handle || kindLabel(data.platform, data.kind)}
                 </a>
@@ -94,6 +95,14 @@ export default function ChannelPage() {
             )}
           </div>
         </div>
+        {data && data.videos_total > 0 && (
+          <div className="border-t border-line px-4 py-4 sm:px-7">
+            <Progress done={data.videos_done} working={Math.max(data.videos_total - data.videos_done - data.videos_failed, 0)} failed={data.videos_failed} total={data.videos_total} className="h-2" />
+            <div className="mt-2.5">
+              <Legend done={data.videos_done} working={Math.max(data.videos_total - data.videos_done - data.videos_failed, 0)} failed={data.videos_failed} />
+            </div>
+          </div>
+        )}
       </header>
 
       <div className="mb-6 mt-7 flex flex-wrap items-center gap-x-4 gap-y-3">

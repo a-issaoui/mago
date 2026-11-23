@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS videos (
     method TEXT CHECK (method IN ('captions','whisper')),
     progress REAL NOT NULL DEFAULT 0,
     transcribed_at TEXT,
+    channel_name TEXT,
+    channel_url TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (platform, platform_video_id)
 );
@@ -100,7 +102,19 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=15000")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Columns added after the first version (CREATE TABLE IF NOT EXISTS won't add them)."""
+    have = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
+    for column in ("channel_name", "channel_url"):
+        if column not in have:
+            try:
+                conn.execute(f"ALTER TABLE videos ADD COLUMN {column} TEXT")
+            except sqlite3.OperationalError:  # the other process added it first
+                pass
 
 
 def get_settings(conn: sqlite3.Connection) -> dict[str, str]:

@@ -96,13 +96,13 @@ export function PasteBox({ onAdded }: { onAdded?: () => void }) {
           </div>
         )}
         {state.step === "error" && <p className="border-t border-line px-5 py-4 text-sm text-amber sm:px-7">{state.message}</p>}
-        {state.step === "ready" && <PreviewCard preview={state.preview} adding={adding} onAdd={() => add(state.preview)} />}
+        {state.step === "ready" && <PreviewCard preview={state.preview} adding={adding} onAdd={() => add(state.preview)} onUseChannel={setValue} />}
       </div>
     </div>
   );
 }
 
-function PreviewCard({ preview, adding, onAdd }: { preview: Preview; adding: boolean; onAdd: () => void }) {
+function PreviewCard({ preview, adding, onAdd, onUseChannel }: { preview: Preview; adding: boolean; onAdd: () => void; onUseChannel: (url: string) => void }) {
   const router = useRouter();
   const isVideo = preview.kind === "video";
   const picture = preview.thumb_url ?? preview.avatar_url;
@@ -126,12 +126,17 @@ function PreviewCard({ preview, adding, onAdd }: { preview: Preview; adding: boo
         )}
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-xs font-medium text-mute">
-            <PlatformMark platform={preview.platform} className="size-3.5" />
+            <PlatformMark platform={preview.platform} className="size-4" />
             {kindLabel(preview.platform, preview.kind)}
             {!isVideo && preview.handle ? `, ${preview.handle}` : ""}
           </p>
           <p className="mt-0.5 line-clamp-2 text-base font-semibold leading-snug">{preview.title || preview.url}</p>
           <p className="mt-0.5 truncate text-sm text-mute">{detail}</p>
+          {isVideo && preview.channel_url && (
+            <button type="button" onClick={() => onUseChannel(preview.channel_url!)} className="mt-1 text-left text-sm font-medium text-murex underline decoration-transparent underline-offset-4 hover:decoration-current">
+              {`Look at the whole channel instead${preview.channel ? ` (${preview.channel})` : ""}`}
+            </button>
+          )}
         </div>
       </div>
       {existing ? (

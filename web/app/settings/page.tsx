@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, useApi } from "@/lib/api";
 
-type Settings = { whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string; youtube_delay_s: string; resync_hours: string };
+type Settings = { whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string; youtube_delay_s: string; youtube_per_hour: string; resync_hours: string };
 type System = { ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; alive: boolean; device: string | null; model: string | null };
 
 const MODELS = [
@@ -105,7 +105,9 @@ export default function SettingsPage() {
             <h2 id="pace-heading" className="text-xl font-semibold">
               Pace
             </h2>
-            <p className="-mt-3 text-sm text-mute">Seconds to wait between videos. TikTok blocks requests that come too fast.</p>
+            <p className="-mt-3 text-sm text-mute">
+              Seconds to wait between videos. Both platforms refuse requests that come too fast; when one does, Mago pauses that platform and resumes by itself.
+            </p>
             <div className="grid grid-cols-2 gap-4">
               {(["tiktok_delay_s", "youtube_delay_s"] as const).map((name) => (
                 <label key={name} className="block">
@@ -124,6 +126,21 @@ export default function SettingsPage() {
               ))}
             </div>
           </section>
+
+          <label className="-mt-5 block">
+            <span className="mb-1.5 block text-sm font-medium">YouTube videos per hour, at most</span>
+            <input
+              key={values.youtube_per_hour}
+              type="number"
+              min={0}
+              max={2000}
+              step={10}
+              defaultValue={values.youtube_per_hour}
+              onBlur={(event) => event.target.value !== values.youtube_per_hour && save({ youtube_per_hour: Number(event.target.value) })}
+              className={`${field} tabular`}
+            />
+            <span className="mt-1.5 block text-sm text-mute">YouTube allows about 300 an hour without an account and can block this computer for up to an hour beyond that. 0 removes the limit.</span>
+          </label>
 
           <section aria-labelledby="resync-heading" className="space-y-5">
             <h2 id="resync-heading" className="text-xl font-semibold">

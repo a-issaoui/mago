@@ -21,7 +21,10 @@ DEFAULT_SETTINGS = {
     "language": "",  # "" = detect per video
     "translate": "0",  # "1" = Whisper task=translate (to English)
     "tiktok_delay_s": "4",  # TikTok answers 429 without a pause between requests
-    "youtube_delay_s": "3",  # YouTube answers 429 on captions after ~90 quick requests
+    # YouTube without an account allows about 300 videos an hour and yt-dlp's wiki recommends
+    # 5-10 s between videos; captions are throttled separately and harder (429 after ~90 quick ones).
+    "youtube_delay_s": "6",
+    "youtube_per_hour": "250",  # 0 = no hourly budget
     "resync_hours": "0",  # check channels for new videos this often; 0 = only by hand
 }
 

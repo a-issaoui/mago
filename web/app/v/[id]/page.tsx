@@ -7,7 +7,8 @@ import { CopyIcon, DownloadIcon, PlatformMark } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
 import { Player, type PlayerHandle } from "@/components/player";
 import { Thumb } from "@/components/thumb";
-import { api, clock, compact, isWorking, shortDate, statusLabel, useApi, type Segment, type Video } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { api, clock, compact, isWorking, shortDate, statusLabel, useApi, type ChannelOffer, type Segment, type Source, type Video } from "@/lib/api";
 
 type Paragraph = { start: number; lines: (Segment & { index: number })[] };
 
@@ -49,7 +50,9 @@ function VideoView() {
   const { id } = useParams<{ id: string }>();
   const start = Math.max(0, Number(useSearchParams().get("t")) || 0);
   const key = useLiveKey(1500);
-  const { data, error, reload } = useApi<{ video: Video; segments: Segment[] }>(`/videos/${id}`, key);
+  const { data, error, reload } = useApi<{ video: Video; segments: Segment[]; channel: ChannelOffer | null }>(`/videos/${id}`, key);
+  const router = useRouter();
+  const [addingChannel, setAddingChannel] = useState(false);
   const player = useRef<PlayerHandle>(null);
   const list = useRef<HTMLDivElement>(null);
   const [time, setTime] = useState(start);
@@ -100,6 +103,15 @@ function VideoView() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   }
+  async function addChannel(url: string) {
+    setAddingChannel(true);
+    try {
+      const source = await api<Source>("/sources", { method: "POST", body: JSON.stringify({ url }) });
+      router.push(`/c/${source.id}`);
+    } finally {
+      setAddingChannel(false);
+    }
+  }
   async function retry() {
     await api(`/videos/${video.id}/retry`, { method: "POST" });
     reload();
@@ -115,7 +127,7 @@ function VideoView() {
         )}
         <h1 className="mt-4 text-xl font-semibold leading-snug sm:text-2xl [overflow-wrap:anywhere]">{fullTitle(video)}</h1>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm text-mute">
-          <PlatformMark platform={video.platform} className="size-3.5" />
+          <PlatformMark platform={video.platform} className="size-4" />
           {video.source_kind !== "video" && video.source_title ? (
             <Link href={`/c/${video.source_id}`} className="font-medium text-ink hover:underline">
               {video.source_title}
@@ -125,7 +137,26 @@ function VideoView() {
           )}
           <span className="tabular text-mute">{[shortDate(video.published_at), video.view_count != null ? `${compact(video.view_count)} views` : "", clock(video.duration_s)].filter(Boolean).join(", ")}</span>
         </p>
-        <p className="mt-1 text-sm text-mute">
+        {data.channel && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+            <p className="min-w-0 text-sm">
+              <span className="block truncate font-semibold">{data.channel.name}</span>
+              <span className="block text-mute">
+                {data.channel.source_id ? "This channel is in your library." : "Only this video is in your library, not the rest of the channel."}
+              </span>
+            </p>
+            {data.channel.source_id ? (
+              <Link href={`/c/${data.channel.source_id}`} className="grid h-9 shrink-0 place-items-center rounded-full border border-line px-4 text-sm font-semibold hover:bg-raised">
+                Open channel
+              </Link>
+            ) : (
+              <button type="button" onClick={() => addChannel(data.channel!.url)} disabled={addingChannel} className="h-9 shrink-0 rounded-full border border-murex px-4 text-sm font-semibold text-murex hover:bg-murex-soft disabled:opacity-60">
+                {addingChannel ? "Adding" : "Transcribe the whole channel"}
+              </button>
+            )}
+          </div>
+        )}
+        <p className="mt-3 text-sm text-mute">
           <a href={video.url} target="_blank" rel="noopener noreferrer" className="underline decoration-line underline-offset-4 hover:text-ink">
             {`Open on ${video.platform === "youtube" ? "YouTube" : "TikTok"}`}
           </a>

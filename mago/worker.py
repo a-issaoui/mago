@@ -24,6 +24,7 @@ class Worker:
         self.conn = conn
         self.engine: Engine | None = None
         self.running = True
+        self.strikes: dict[str, int] = {}  # refusals in a row, per platform
 
     def _engine(self, settings: dict) -> Engine:
         wanted = (settings["whisper_model"], settings["device"])
@@ -65,6 +66,26 @@ class Worker:
             thumbs.save_video_thumb(self.conn, video)
         return f"{result['status']} via {result['method'] or '-'} ({result['segments']} lines)"
 
+    def _pause(self, platform: str, seconds: int, reason: str) -> None:
+        """Stop touching a platform for a while and say so (Activity shows it)."""
+        held = jobs.pause_platform(self.conn, platform, seconds)
+        db.set_runtime(self.conn, **{f"pause_{platform}_until": int(time.time()) + seconds, f"pause_{platform}_reason": reason})
+        log.warning("%s paused for %ds (%s): %d waiting videos held back", platform, seconds, reason, held)
+
+    def _over_hourly_budget(self, job: dict, platform: str | None) -> bool:
+        if platform != "youtube":
+            return False
+        try:
+            budget = int(float(db.get_settings(self.conn)["youtube_per_hour"]))
+        except ValueError:
+            budget = 0
+        done, wait = jobs.done_last_hour(self.conn, platform)
+        if budget <= 0 or done < budget:
+            return False
+        jobs.release(self.conn, job, None)
+        self._pause(platform, max(wait, 60), "budget")
+        return True
+
     def step(self) -> bool:
         """Run one job. Returns False when the queue is empty."""
         job = jobs.claim(self.conn)
@@ -78,19 +99,29 @@ class Worker:
             else:
                 video = library.get_video(self.conn, job["video_id"])
                 platform = video["platform"] if video else None
+                if self._over_hourly_budget(job, platform):
+                    return True
                 jobs.finish(self.conn, job["id"], self.run_transcribe(job))
-        except fetch.RateLimited:
+                if platform and self.strikes.pop(platform, 0):
+                    db.set_runtime(self.conn, **{f"pause_{platform}_until": 0})
+        except fetch.RateLimited as error:
             name = {"youtube": "YouTube", "tiktok": "TikTok"}.get(platform or "", "The platform")
-            self._retry_or_fail(job, f"{name} asked Mago to slow down. It will try again shortly.", jobs.RATE_LIMIT_ATTEMPTS, True)
-            if platform and job["attempts"] < jobs.RATE_LIMIT_ATTEMPTS:
-                held = jobs.pause_platform(self.conn, platform, jobs.backoff_s(job["attempts"], True))
-                log.warning("%s rate limit: %d waiting videos held back", platform, held)
+            message = f"{name} asked Mago to slow down. It will try again shortly."
+            if job["kind"] == "transcribe" and platform:
+                # The limit is on this computer's address, not on this video: retrying one video
+                # doesn't help, so pause the whole platform, longer each time it refuses again.
+                self.strikes[platform] = self.strikes.get(platform, 0) + 1
+                jobs.release(self.conn, job, message)
+                self._pause(platform, min(120 * 2 ** (self.strikes[platform] - 1), 3600), "refused")
+                log.info("rate limit detail: %s", str(error)[:200])
+            else:
+                self._retry_or_fail(job, message, jobs.RATE_LIMIT_ATTEMPTS, True)
         except fetch.Unavailable as error:  # a whole source that is gone
             jobs.fail(self.conn, job, str(error))
         except Exception as error:  # noqa: BLE001 - one bad video must not stop the queue
             log.exception("job %s failed", job["id"])
             self._retry_or_fail(job, str(error) or type(error).__name__, jobs.MAX_ATTEMPTS, False)
-        self._pause(platform)
+        self._wait_between(platform)
         return True
 
     def _retry_or_fail(self, job: dict, message: str, max_attempts: int, rate_limited: bool) -> None:
@@ -99,7 +130,7 @@ class Worker:
         else:
             jobs.retry_later(self.conn, job, jobs.backoff_s(job["attempts"], rate_limited), message)
 
-    def _pause(self, platform: str | None) -> None:
+    def _wait_between(self, platform: str | None) -> None:
         settings = db.get_settings(self.conn)
         try:
             delay = float(settings["tiktok_delay_s" if platform == "tiktok" else "youtube_delay_s"])

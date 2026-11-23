@@ -82,6 +82,25 @@ def recover(conn: sqlite3.Connection) -> int:
     return conn.execute("UPDATE jobs SET state = 'pending', next_try_at = datetime('now') WHERE state = 'running'").rowcount
 
 
+def release(conn: sqlite3.Connection, job: dict, message: str | None = None) -> None:
+    """Put a claimed job back untouched: the platform is paused, the video did nothing wrong,
+    so this does not use up one of its tries."""
+    conn.execute("UPDATE jobs SET state = 'pending', attempts = max(attempts - 1, 0), log = ? WHERE id = ?", (message, job["id"]))
+    if job.get("video_id"):
+        conn.execute("UPDATE videos SET status = 'queued', error = ?, progress = 0 WHERE id = ?", (message, job["video_id"]))
+
+
+def done_last_hour(conn: sqlite3.Connection, platform: str) -> tuple[int, int]:
+    """(videos of this platform finished in the last hour, seconds until the oldest of them is an hour old)."""
+    row = conn.execute(
+        "SELECT count(*) AS n, min(strftime('%s', j.finished_at)) AS oldest, strftime('%s', 'now') AS now FROM jobs j "
+        "JOIN videos v ON v.id = j.video_id WHERE j.kind = 'transcribe' AND j.state = 'done' "
+        "AND j.finished_at > datetime('now', '-1 hour') AND v.platform = ?", (platform,),
+    ).fetchone()
+    wait = int(row["oldest"]) + 3600 - int(row["now"]) if row["n"] else 0
+    return row["n"], max(wait, 0)
+
+
 def pause_platform(conn: sqlite3.Connection, platform: str, delay_s: int) -> int:
     """The platform said "slow down": hold back every waiting video of that
     platform, not only the one that was refused, so we stop knocking."""

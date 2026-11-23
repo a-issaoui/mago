@@ -81,6 +81,7 @@ class SettingsBody(BaseModel):
     translate: Literal["0", "1"] | None = None
     tiktok_delay_s: float | None = Field(default=None, ge=0, le=120)
     youtube_delay_s: float | None = Field(default=None, ge=0, le=120)
+    youtube_per_hour: int | None = Field(default=None, ge=0, le=2000)
     resync_hours: float | None = Field(default=None, ge=0, le=720)
 
 
@@ -180,6 +181,8 @@ def videos(
     source_id: int | None = None,
     status: Literal["done", "working", "failed", "listed"] | None = None,
     sort: Literal["newest", "oldest", "views", "longest", "recent"] = "newest",
+    platform: Literal["youtube", "tiktok"] | None = None,
+    single: bool = False,
     q: str = Query(default="", max_length=200),
     limit: int = Query(default=60, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -188,6 +191,11 @@ def videos(
     if source_id is not None:
         where.append("v.source_id = ?")
         params.append(source_id)
+    if platform:
+        where.append("v.platform = ?")
+        params.append(platform)
+    if single:  # videos added on their own, not as part of a channel
+        where.append("s.kind = 'video'")
     if status:
         marks = ",".join("?" * len(_STATUS_GROUPS[status]))
         where.append(f"v.status IN ({marks})")
@@ -199,7 +207,7 @@ def videos(
     if sort == "recent":
         where.append("v.status = 'done'")
     clause = " AND ".join(where)
-    total = conn.execute(f"SELECT count(*) FROM videos v WHERE {clause}", params).fetchone()[0]
+    total = conn.execute(f"SELECT count(*) FROM videos v JOIN sources s ON s.id = v.source_id WHERE {clause}", params).fetchone()[0]
     rows = conn.execute(
         f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title, s.handle AS source_handle FROM videos v "
         f"JOIN sources s ON s.id = v.source_id WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
@@ -214,7 +222,17 @@ def video(video_id: int, conn: sqlite3.Connection = Conn):
     if found is None:
         raise HTTPException(404, "No such video.")
     segments = library.get_segments(conn, video_id)
-    return {"video": found, "segments": segments, "paragraphs": export.paragraphs(segments)}
+    channel = None
+    if found["source_kind"] == "video" and found.get("channel_url"):
+        # Added on its own: say which channel it comes from, and whether that channel is in the library.
+        try:
+            link = detect(found["channel_url"])
+            known = conn.execute("SELECT id FROM sources WHERE url = ?", (link.url,)).fetchone()
+            channel = {"name": found["channel_name"] or link.key, "handle": link.key, "url": link.url,
+                       "source_id": known["id"] if known else None}
+        except UnsupportedLink:
+            channel = None
+    return {"video": found, "segments": segments, "channel": channel}
 
 
 @app.post("/api/videos/{video_id}/retry")
@@ -278,7 +296,21 @@ def activity_snapshot(conn: sqlite3.Connection) -> dict:
     )
     runtime = db.get_runtime(conn)
     heartbeat = int(runtime.get("heartbeat", 0))
+    now = int(time.time())
+    pauses = [
+        {"platform": name, "until": int(runtime.get(f"pause_{name}_until", 0)), "reason": runtime.get(f"pause_{name}_reason", "refused")}
+        for name in ("youtube", "tiktok")
+        if int(runtime.get(f"pause_{name}_until", 0)) > now
+    ]
+    platforms = {name: {"total": 0, "done": 0, "working": 0, "failed": 0} for name in ("youtube", "tiktok")}
+    for row in conn.execute("SELECT platform, status, count(*) AS n FROM videos GROUP BY platform, status"):
+        bucket = "done" if row["status"] == "done" else "failed" if row["status"] in ("failed", "skipped") else "working"
+        if row["status"] != "listed":
+            platforms[row["platform"]][bucket] += row["n"]
+        platforms[row["platform"]]["total"] += row["n"]
     return {
+        "pauses": pauses,
+        "platforms": platforms,
         "counts": counts,
         "queued": counts.get("queued", 0),
         "active": [dict(row) for row in active],
@@ -305,6 +337,24 @@ def activity(conn: sqlite3.Connection = Conn):
         "SELECT s.id, s.title, s.handle, s.url, j.log AS error FROM sources s JOIN jobs j ON j.id = "
         "(SELECT max(id) FROM jobs WHERE source_id = s.id AND kind = 'list') WHERE j.state = 'failed'"
     )
+    # Rough time left: how long recent videos took on each platform, plus the pause between videos.
+    settings = db.get_settings(conn)
+    eta = 0.0
+    for name in ("youtube", "tiktok"):
+        waiting = snapshot["platforms"][name]["working"]
+        if not waiting:
+            continue
+        average = conn.execute(
+            "SELECT avg(s) FROM (SELECT (julianday(j.finished_at) - julianday(j.started_at)) * 86400 AS s FROM jobs j "
+            "JOIN videos v ON v.id = j.video_id WHERE j.kind = 'transcribe' AND j.state = 'done' AND v.platform = ? "
+            "ORDER BY j.id DESC LIMIT 20)", (name,),
+        ).fetchone()[0]
+        per_video = (average if average is not None else (3 if name == "youtube" else 15)) + float(settings[f"{name}_delay_s"])
+        if name == "youtube" and float(settings["youtube_per_hour"]) > 0:
+            per_video = max(per_video, 3600 / float(settings["youtube_per_hour"]))
+        eta += waiting * per_video
+        eta += max((pause["until"] - time.time() for pause in snapshot["pauses"] if pause["platform"] == name), default=0)
+    snapshot["eta_s"] = round(eta)
     return {**snapshot, "up_next": [dict(row) for row in up_next], "failed": [dict(row) for row in failed],
             "failed_sources": [dict(row) for row in failed_sources]}
 

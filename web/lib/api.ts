@@ -29,7 +29,12 @@ export type Video = {
   source_title?: string | null;
   source_handle?: string | null;
   source_kind?: string;
+  channel_name?: string | null;
+  channel_url?: string | null;
 };
+
+export type ChannelOffer = { name: string; handle: string; url: string; source_id: number | null };
+export type PlatformCounts = { total: number; done: number; working: number; failed: number };
 
 export type Cover = { thumb_path: string; thumb_blur: string | null; shape: Shape };
 
@@ -65,6 +70,7 @@ export type Preview = {
   banner_url: string | null;
   video_count: number | null;
   duration_s: number | null;
+  channel_url?: string | null;
   existing_source_id: number | null;
   existing_video_id: number | null;
 };
@@ -85,6 +91,8 @@ export type Hit = {
 };
 
 export type Snapshot = {
+  pauses: { platform: Platform; until: number; reason: "refused" | "budget" }[];
+  platforms: Record<Platform, PlatformCounts>;
   counts: Partial<Record<Status, number>>;
   queued: number;
   active: Video[];
@@ -93,6 +101,7 @@ export type Snapshot = {
 };
 
 export type Activity = Snapshot & {
+  eta_s: number;
   up_next: Video[];
   failed: Video[];
   failed_sources: { id: number; title: string | null; handle: string | null; url: string; error: string | null }[];
@@ -179,6 +188,14 @@ export function shortDate(iso: string | null): string {
 export function compact(n: number | null | undefined): string {
   if (n == null) return "";
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+/** "about 25 minutes", "about 3 hours" */
+export function roughDuration(seconds: number): string {
+  if (seconds < 90) return "about a minute";
+  if (seconds < 3600) return `about ${Math.round(seconds / 60)} minutes`;
+  const hours = seconds / 3600;
+  return hours < 1.5 ? "about an hour" : `about ${Math.round(hours)} hours`;
 }
 
 export const platformName = (platform: Platform) => (platform === "youtube" ? "YouTube" : "TikTok");

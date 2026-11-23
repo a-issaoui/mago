@@ -32,9 +32,9 @@ _UNAVAILABLE = (
     "private", "unavailable", "removed", "deleted", "not available", "members-only",
     "members only", "confirm your age", "age-restricted", "copyright", "terminated",
     "does not exist", "no longer available", "this live event", "premieres in",
-    "geo restrict", "in your country", "status code 404", "status_code 10204", "no video formats found",
+    "geo restrict", "in your country", "status code 404", "status_code 10204",
 )
-_RATE_LIMITED = ("429", "too many requests", "rate limit", "rate-limit", "not a bot", "captcha")
+_RATE_LIMITED = ("429", "too many requests", "rate limit", "rate-limit", "rate-limited", "not a bot", "captcha", "try again later")
 
 
 class FetchError(Exception):
@@ -106,7 +106,11 @@ def video_fields(info: dict, platform: str) -> dict:
     tall = platform == "tiktok" or "/shorts/" in str(info.get("url") or "")
     if info.get("width") and info.get("height"):
         tall = info["height"] > info["width"]
+    handle = str(info.get("uploader") or "") if platform == "tiktok" else ""
+    channel_url = f"https://www.tiktok.com/@{handle}" if handle else (info.get("uploader_url") or info.get("channel_url"))
     return {
+        "channel_name": info.get("channel") or info.get("uploader"),
+        "channel_url": channel_url,
         "shape": "tall" if tall else "wide",
         "platform_video_id": video_id,
         "url": url,
@@ -132,7 +136,7 @@ def probe(link: Link) -> dict:
             "channel": info.get("channel") or info.get("uploader"),
             "thumb_url": platform_fields["thumb_url_original"],
             "avatar_url": None, "banner_url": None, "video_count": 1,
-            "duration_s": platform_fields["duration_s"],
+            "duration_s": platform_fields["duration_s"], "channel_url": platform_fields["channel_url"],
         }
     info = _extract(link.url, extract_flat=True, process=False, playlistend=1)
     first = next(iter(info.get("entries") or []), None) or {}

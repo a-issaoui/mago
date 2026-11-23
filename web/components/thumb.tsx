@@ -48,8 +48,8 @@ export function Thumb({ path, blur, shape, platform, duration, status, progress 
         />
       )}
       {platform && (
-        <span className="absolute left-1.5 top-1.5 grid size-6 place-items-center rounded-md bg-black/55 text-white backdrop-blur-sm">
-          <PlatformMark platform={platform} className="size-3.5 [--night:#000]" />
+        <span className="absolute left-1.5 top-1.5 grid place-items-center rounded-md bg-white/95 p-[3px] shadow-sm">
+          <PlatformMark platform={platform} className="size-4" />
         </span>
       )}
       {duration != null && duration > 0 && (
@@ -58,6 +58,11 @@ export function Thumb({ path, blur, shape, platform, duration, status, progress 
         </span>
       )}
       {working && <ProgressRing progress={status === "transcribing" ? progress : null} />}
+      {working && (
+        <span className="absolute inset-x-0 bottom-0 h-1 bg-black/50">
+          <span className={`block h-full origin-left bg-murex ${status === "transcribing" ? "" : "live-dot"}`} style={{ transform: `scaleX(${status === "transcribing" ? Math.max(progress, 0.03) : 1})`, transition: "transform 0.6s ease" }} />
+        </span>
+      )}
       {showPlay && !working && !waiting && !unavailable && (
         <span className="play absolute inset-0 grid place-items-center bg-black/25">
           <span className="grid size-11 place-items-center rounded-full bg-murex text-on-murex shadow-lg">

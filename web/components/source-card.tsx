@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { PlatformMark } from "@/components/icons";
+import { Progress } from "@/components/progress";
 import { mediaUrl, thumbUrl, type Source } from "@/lib/api";
 
 export function Avatar({ source, className = "size-12" }: { source: Pick<Source, "avatar_path" | "title" | "handle" | "covers">; className?: string }) {
@@ -42,7 +43,7 @@ export function progressText(source: Source): string {
 }
 
 export function SourceCard({ source }: { source: Source }) {
-  const fraction = source.videos_total ? source.videos_done / source.videos_total : 0;
+  const working = Math.max(source.videos_total - source.videos_done - source.videos_failed, 0);
   return (
     <Link href={`/c/${source.id}`} className="card group block overflow-hidden rounded-2xl border border-line bg-surface">
       <Banner source={source} className="h-24" />
@@ -50,12 +51,10 @@ export function SourceCard({ source }: { source: Source }) {
         <Avatar source={source} className="-mt-6 size-14" />
         <p className="mt-2 truncate text-lg font-semibold leading-tight">{source.title || source.handle || source.url}</p>
         <p className="mt-0.5 flex items-center gap-1.5 truncate text-sm text-mute">
-          <PlatformMark platform={source.platform} className="size-3.5 shrink-0" />
+          <PlatformMark platform={source.platform} className="size-4 shrink-0" />
           {source.handle || (source.kind === "playlist" ? "Playlist" : "")}
         </p>
-        <div className="mt-3 h-1 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuemin={0} aria-valuemax={source.videos_total} aria-valuenow={source.videos_done} aria-label="Transcribed">
-          <div className="h-full origin-left rounded-full bg-sea transition-transform duration-500" style={{ transform: `scaleX(${fraction})` }} />
-        </div>
+        <Progress done={source.videos_done} working={working} failed={source.videos_failed} total={source.videos_total} className="mt-3 h-1.5" />
         <p className="tabular mt-2 text-xs text-mute">{progressText(source)}</p>
       </div>
     </Link>

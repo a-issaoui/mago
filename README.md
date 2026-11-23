@@ -86,9 +86,15 @@ data/                   the library: mago.db, thumbs/, avatars/, logs/ (not in g
 - **Unavailable videos** (private, removed, region-blocked) are marked once and not retried.
 - **GPU sharing.** If `another program` holds its `gpu.lock`, or less than 1.5 GB of graphics memory is free, Whisper
   uses the CPU for that video.
-- **Rate limits.** When YouTube or TikTok answer "429 Too Many Requests", every waiting video of that platform is
-  held back (1 minute, then 2, 4, ...) and retried up to 8 times. YouTube did this after about 90 caption downloads
-  at a 1 s pace, so the default pause is now 3 s.
+- **Platform limits (researched 2026-11-23).** YouTube allows about 300 videos an hour without an account
+  (yt-dlp wiki, which recommends 5-10 s between videos) and can lock the session for up to an hour beyond that.
+  Captions are throttled separately and harder, per IP: Mago hit HTTP 429 after about 90 quick caption downloads.
+  So Mago waits 6 s between YouTube videos and stops at 250 an hour (both in Settings). TikTok publishes no
+  numbers; Mago waits 4 s between videos.
+- **When a platform refuses (429).** Every waiting video of that platform is paused (2 minutes, then 4, 8, up to
+  an hour) and Activity shows when it resumes. The pause does not use up a video's retries.
+- **Single videos and their channel.** Adding one video never adds its channel. The video page and the paste box
+  offer "the whole channel" as a separate, deliberate step. If the channel is added later, the video moves into it.
 - **A video belongs to one source.** A playlist whose videos are already in a channel you added shows as empty.
 - **No accounts, so two guards instead.** The API and the web server only answer to `mago.test`, `127.0.0.1` and
   `localhost` (set `MAGO_HOSTS` for the web server to change that), and every write needs an `X-Mago: 1` header.

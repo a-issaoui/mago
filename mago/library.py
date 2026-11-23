@@ -10,6 +10,7 @@ from . import fetch
 from .links import Link, detect
 
 _VIDEO_COLUMNS = ("url", "title", "description", "published_at", "duration_s", "view_count", "thumb_url_original", "language")
+_EXTRA_COLUMNS = ("channel_name", "channel_url")  # known only after the video itself has been read
 
 
 def add_source(conn: sqlite3.Connection, raw_url: str, preview: dict | None = None) -> int:
@@ -49,6 +50,7 @@ def upsert_video(conn: sqlite3.Connection, source_id: int, platform: str, fields
             (source_id, platform, fields["platform_video_id"], *(fields.get(c) for c in _VIDEO_COLUMNS),
              fields.get("shape") or ("tall" if platform == "tiktok" else "wide")),
         )
+        update_video(conn, cursor.lastrowid, {c: fields.get(c) for c in _EXTRA_COLUMNS})
         return cursor.lastrowid, True
     update_video(conn, row["id"], fields)
     if row["source_id"] != source_id and row["kind"] == "video":
@@ -61,7 +63,7 @@ def upsert_video(conn: sqlite3.Connection, source_id: int, platform: str, fields
 
 def update_video(conn: sqlite3.Connection, video_id: int, fields: dict) -> None:
     """Fill in metadata; a missing value never erases one we already have."""
-    known = {c: fields[c] for c in _VIDEO_COLUMNS if fields.get(c) not in (None, "")}
+    known = {c: fields[c] for c in _VIDEO_COLUMNS + _EXTRA_COLUMNS if fields.get(c) not in (None, "")}
     if known:
         assignments = ", ".join(f"{column} = ?" for column in known)
         conn.execute(f"UPDATE videos SET {assignments} WHERE id = ?", (*known.values(), video_id))

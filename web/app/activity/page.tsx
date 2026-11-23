@@ -1,21 +1,43 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
+import { Legend, Progress } from "@/components/progress";
 import { Thumb } from "@/components/thumb";
-import { api, statusLabel, useApi, type Activity, type Video } from "@/lib/api";
+import { api, platformName, roughDuration, statusLabel, useApi, type Activity, type Platform, type Video } from "@/lib/api";
+
+/** "resumes in 12 min", counting down without waiting for the server. */
+function useNow(): number {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 5000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+function wait(seconds: number): string {
+  if (seconds < 60) return "less than a minute";
+  const minutes = Math.ceil(seconds / 60);
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
 
 function Row({ video, children }: { video: Video; children?: React.ReactNode }) {
   return (
     <li className="flex items-center gap-4 py-3">
       <Link href={`/v/${video.id}`} className="block w-24 shrink-0" tabIndex={-1} aria-hidden>
-        <Thumb path={video.thumb_path} blur={video.thumb_blur} shape="wide" platform={video.platform} />
+        <Thumb path={video.thumb_path} blur={video.thumb_blur} shape="wide" />
       </Link>
       <div className="min-w-0 flex-1">
         <Link href={`/v/${video.id}`} className="line-clamp-1 font-medium hover:underline">
           {video.title || "Untitled video"}
         </Link>
-        <p className="truncate text-sm text-mute">{video.source_title}</p>
+        <p className="flex items-center gap-1.5 truncate text-sm text-mute">
+          <PlatformMark platform={video.platform} className="size-3.5 shrink-0" />
+          {video.source_title}
+        </p>
         {children}
       </div>
     </li>
@@ -32,6 +54,12 @@ export default function ActivityPage() {
   const skipped = data?.failed.filter((video) => video.status === "skipped") ?? [];
   const queued = snapshot?.queued ?? data?.queued ?? 0;
   const idle = active.length === 0 && queued === 0 && (snapshot?.listing.length ?? 0) === 0;
+  const now = useNow();
+  const platforms = snapshot?.platforms ?? data?.platforms;
+  const pauses = (snapshot?.pauses ?? data?.pauses ?? []).filter((pause) => pause.until > now);
+  const names: Platform[] = ["youtube", "tiktok"];
+  const total = platforms ? names.reduce((sum, name) => sum + platforms[name].total, 0) : 0;
+  const sum = (field: "done" | "working" | "failed") => (platforms ? names.reduce((value, name) => value + platforms[name][field], 0) : 0);
 
   async function retry(id: number) {
     await api(`/videos/${id}/retry`, { method: "POST" });
@@ -60,11 +88,51 @@ export default function ActivityPage() {
       </p>
       {error && <p className="mt-4 text-amber">{error}</p>}
 
+      {platforms && total > 0 && (
+        <section aria-label="Overall progress" className="mt-7 rounded-2xl border border-line bg-surface p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p className="tabular text-lg font-semibold">{`${sum("done")} of ${total} videos transcribed`}</p>
+            {data && data.eta_s > 0 && sum("working") > 0 && <p className="text-sm text-mute">{`${roughDuration(data.eta_s)} left at the current pace`}</p>}
+          </div>
+          <Progress done={sum("done")} working={sum("working")} failed={sum("failed")} total={total} className="mt-3 h-2.5" />
+          <div className="mt-3">
+            <Legend done={sum("done")} working={sum("working")} failed={sum("failed")} />
+          </div>
+          <div className="mt-5 grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
+            {names.filter((name) => platforms[name].total > 0).map((name) => {
+              const pause = pauses.find((item) => item.platform === name);
+              return (
+                <div key={name}>
+                  <p className="tabular flex items-center gap-2 text-sm font-semibold">
+                    <PlatformMark platform={name} className="size-[18px]" />
+                    {platformName(name)}
+                    <span className="ml-auto font-normal text-mute">{`${platforms[name].done} of ${platforms[name].total}`}</span>
+                  </p>
+                  <Progress {...platforms[name]} className="mt-2 h-1.5" label={`${platformName(name)} transcribed`} />
+                  {pause && (
+                    <p className="mt-2 text-xs text-amber">
+                      {pause.reason === "budget"
+                        ? `Paused: this hour's YouTube limit is used up. Resumes in ${wait(pause.until - now)}.`
+                        : `Paused: ${platformName(name)} asked Mago to slow down. Trying again in ${wait(pause.until - now)}.`}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section className="mt-9" aria-labelledby="now-heading">
         <h2 id="now-heading" className="text-xl font-semibold">
           Now
         </h2>
         {idle && <p className="mt-2 text-mute">Nothing is running. Paste a link in the library to add videos.</p>}
+        {!idle && active.length === 0 && (snapshot?.listing.length ?? 0) === 0 && (
+          <p className="mt-2 text-mute">
+            {pauses.length > 0 ? "Waiting. The platforms with videos left are paused; see above for when they resume." : "Waiting a few seconds before the next video."}
+          </p>
+        )}
         <ul className="divide-y divide-line">
           {snapshot?.listing.map((source) => (
             <li key={`list-${source.id}`} className="flex items-center gap-3 py-3">
@@ -98,7 +166,7 @@ export default function ActivityPage() {
           <ul className="divide-y divide-line">
             {data?.up_next.map((video) => (
               <Row key={video.id} video={video}>
-                {video.error && <p className="truncate text-xs text-amber">{video.error}</p>}
+                {video.error && !pauses.some((pause) => pause.platform === video.platform) && <p className="truncate text-xs text-amber">{video.error}</p>}
               </Row>
             ))}
           </ul>
