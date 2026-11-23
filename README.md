@@ -86,6 +86,13 @@ data/                   the library: mago.db, thumbs/, avatars/, logs/ (not in g
 - **Unavailable videos** (private, removed, region-blocked) are marked once and not retried.
 - **GPU sharing.** If `another program` holds its `gpu.lock`, or less than 1.5 GB of graphics memory is free, Whisper
   uses the CPU for that video.
+- **Rate limits.** When YouTube or TikTok answer "429 Too Many Requests", every waiting video of that platform is
+  held back (1 minute, then 2, 4, ...) and retried up to 8 times. YouTube did this after about 90 caption downloads
+  at a 1 s pace, so the default pause is now 3 s.
+- **A video belongs to one source.** A playlist whose videos are already in a channel you added shows as empty.
+- **No accounts, so two guards instead.** The API and the web server only answer to `mago.test`, `127.0.0.1` and
+  `localhost` (set `MAGO_HOSTS` for the web server to change that), and every write needs an `X-Mago: 1` header.
+  Together these stop another website open in the same browser from reading or changing the library.
 - **Search matches within one spoken line**, so a phrase split across two caption lines is not found.
 - **TikTok profiles have no avatar or banner** through yt-dlp; their cards use the latest thumbnails instead.
 - **Terms of service.** Bulk downloading is against YouTube's and TikTok's terms. This is a private research tool;

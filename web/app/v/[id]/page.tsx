@@ -70,7 +70,7 @@ function VideoView() {
     const line = list.current?.querySelector<HTMLElement>(`[data-line="${active}"]`);
     const box = list.current;
     if (!line || !box || box.scrollHeight <= box.clientHeight) return;
-    const top = line.offsetTop - box.offsetTop;
+    const top = line.offsetTop; // the list is the offset parent (position: relative)
     if (top < box.scrollTop + 40 || top > box.scrollTop + box.clientHeight - 120) {
       box.scrollTo({ top: top - box.clientHeight / 3, behavior: "smooth" });
     }

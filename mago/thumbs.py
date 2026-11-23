@@ -6,8 +6,12 @@ page) plus a tiny blurred placeholder stored in the database as a data URI.
 
 import base64
 import io
+import ipaddress
+import re
+import socket
 import sqlite3
 import urllib.request
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -20,11 +24,31 @@ _HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (K
 _MAX_BYTES = 15 * 1024 * 1024
 
 
+def _check_public(url: str) -> None:
+    """Thumbnail links come from the platforms' metadata. Refuse anything that
+    isn't plain https to a public address, so a crafted link can't make this
+    machine fetch from itself or the home network."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("thumbnail link is not https")
+    for info in socket.getaddrinfo(parsed.hostname, 443, proto=socket.IPPROTO_TCP):
+        if not ipaddress.ip_address(info[4][0]).is_global:
+            raise ValueError("thumbnail link points to a private address")
+
+
+class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _check_public(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_opener = urllib.request.build_opener(_CheckedRedirects)
+
+
 def _download(url: str) -> Image.Image:
-    if not url.startswith(("https://", "http://")):
-        raise ValueError("thumbnail link is not http(s)")
+    _check_public(url)
     request = urllib.request.Request(url, headers=_HEADERS)
-    with urllib.request.urlopen(request, timeout=20) as response:  # noqa: S310 - scheme checked above
+    with _opener.open(request, timeout=20) as response:
         raw = response.read(_MAX_BYTES + 1)
     if len(raw) > _MAX_BYTES:
         raise ValueError("thumbnail is too large")
@@ -73,8 +97,8 @@ def _make_thumb(video: dict) -> tuple | None:
     """Download and write one video's thumbnail files (no database access, so
     it is safe to run in a thread). Returns the values to store, or None."""
     url = video.get("thumb_url_original")
-    if not url:
-        return None
+    if not url or not re.fullmatch(r"[\w-]{1,64}", str(video["platform_video_id"])):
+        return None  # the id becomes a file name
     relative = f"thumbs/{video['platform']}/{video['platform_video_id']}"
     try:
         image, _ = save_image(url, config.DATA_DIR / relative, SIZES, trim=video["platform"] == "youtube")

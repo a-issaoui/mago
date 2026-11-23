@@ -13,7 +13,10 @@ def enqueue_list(conn: sqlite3.Connection, source_id: int) -> int:
     ).fetchone()
     if row:
         return row["id"]
-    return conn.execute("INSERT INTO jobs(source_id, kind, priority) VALUES (?, 'list', 100)", (source_id,)).lastrowid
+    try:
+        return conn.execute("INSERT INTO jobs(source_id, kind, priority) VALUES (?, 'list', 100)", (source_id,)).lastrowid
+    except sqlite3.IntegrityError:  # another request queued it in the same instant
+        return enqueue_list(conn, source_id)
 
 
 def enqueue_transcribe(conn: sqlite3.Connection, video_id: int, priority: int = 0) -> int:
@@ -22,10 +25,14 @@ def enqueue_transcribe(conn: sqlite3.Connection, video_id: int, priority: int = 
     ).fetchone()
     if row:
         return row["id"]
+    try:
+        job_id = conn.execute(
+            "INSERT INTO jobs(video_id, kind, priority) VALUES (?, 'transcribe', ?)", (video_id, priority)
+        ).lastrowid
+    except sqlite3.IntegrityError:  # another request queued it in the same instant
+        return enqueue_transcribe(conn, video_id, priority)
     conn.execute("UPDATE videos SET status = 'queued', error = NULL, progress = 0 WHERE id = ?", (video_id,))
-    return conn.execute(
-        "INSERT INTO jobs(video_id, kind, priority) VALUES (?, 'transcribe', ?)", (video_id, priority)
-    ).lastrowid
+    return job_id
 
 
 def claim(conn: sqlite3.Connection) -> dict | None:
@@ -73,6 +80,16 @@ def recover(conn: sqlite3.Connection) -> int:
         "UPDATE videos SET status = 'queued', progress = 0 WHERE status IN ('captions','downloading','transcribing')"
     )
     return conn.execute("UPDATE jobs SET state = 'pending', next_try_at = datetime('now') WHERE state = 'running'").rowcount
+
+
+def pause_platform(conn: sqlite3.Connection, platform: str, delay_s: int) -> int:
+    """The platform said "slow down": hold back every waiting video of that
+    platform, not only the one that was refused, so we stop knocking."""
+    return conn.execute(
+        "UPDATE jobs SET next_try_at = max(next_try_at, datetime('now', ?)) WHERE state = 'pending' AND kind = 'transcribe' "
+        "AND video_id IN (SELECT id FROM videos WHERE platform = ?)",
+        (f"+{int(delay_s)} seconds", platform),
+    ).rowcount
 
 
 def enqueue_due_resyncs(conn: sqlite3.Connection, every_hours: float) -> int:

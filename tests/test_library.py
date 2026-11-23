@@ -95,3 +95,21 @@ def test_settings(conn):
     assert db.get_settings(conn)["whisper_model"] == "medium"
     with pytest.raises(KeyError):
         db.set_setting(conn, "nope", "1")
+
+
+def test_thumbnail_links_must_be_public_https():
+    from mago import thumbs
+
+    for bad in ("http://i.ytimg.com/a.jpg", "https://127.0.0.1/a.jpg", "https://localhost/a.jpg", "file:///etc/passwd", "https://192.168.1.1/x"):
+        with pytest.raises(ValueError):
+            thumbs._check_public(bad)
+    assert thumbs._make_thumb({"id": 1, "platform": "youtube", "platform_video_id": "../../x", "thumb_url_original": "https://i.ytimg.com/a.jpg"}) is None
+
+
+def test_no_duplicate_active_jobs(conn):
+    from mago import jobs
+
+    _, video_id = add_video(conn)
+    assert jobs.enqueue_transcribe(conn, video_id) == jobs.enqueue_transcribe(conn, video_id)
+    with pytest.raises(Exception):
+        conn.execute("INSERT INTO jobs(video_id, kind) VALUES (?, 'transcribe')", (video_id,))

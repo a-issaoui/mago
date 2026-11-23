@@ -5,6 +5,7 @@ One worker means one Whisper job on the GPU at a time and a steady, polite
 pace towards YouTube and TikTok.
 """
 
+import fcntl
 import logging
 import os
 import signal
@@ -12,7 +13,7 @@ import sys
 import sqlite3
 import time
 
-from . import db, fetch, jobs, library, pipeline, thumbs
+from . import config, db, fetch, jobs, library, pipeline, thumbs
 from .whisper_engine import Engine
 
 log = logging.getLogger("mago.worker")
@@ -78,8 +79,12 @@ class Worker:
                 video = library.get_video(self.conn, job["video_id"])
                 platform = video["platform"] if video else None
                 jobs.finish(self.conn, job["id"], self.run_transcribe(job))
-        except fetch.RateLimited as error:
-            self._retry_or_fail(job, f"Rate limited: {error}", jobs.RATE_LIMIT_ATTEMPTS, True)
+        except fetch.RateLimited:
+            name = {"youtube": "YouTube", "tiktok": "TikTok"}.get(platform or "", "The platform")
+            self._retry_or_fail(job, f"{name} asked Mago to slow down. It will try again shortly.", jobs.RATE_LIMIT_ATTEMPTS, True)
+            if platform and job["attempts"] < jobs.RATE_LIMIT_ATTEMPTS:
+                held = jobs.pause_platform(self.conn, platform, jobs.backoff_s(job["attempts"], True))
+                log.warning("%s rate limit: %d waiting videos held back", platform, held)
         except fetch.Unavailable as error:  # a whole source that is gone
             jobs.fail(self.conn, job, str(error))
         except Exception as error:  # noqa: BLE001 - one bad video must not stop the queue
@@ -134,6 +139,15 @@ class Worker:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    config.ensure_dirs()
+    # Only one worker may run: a second one would take back ("recover") the job the
+    # first is still doing. Wait here until the previous worker has finished and gone.
+    lock = open(config.DATA_DIR / "worker.lock", "w")  # noqa: SIM115 - held for the life of the process
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        log.info("another worker is finishing its job; waiting for it to stop")
+        fcntl.flock(lock, fcntl.LOCK_EX)
     worker = Worker(db.connect())
 
     def stop(*_):

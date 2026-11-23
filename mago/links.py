@@ -2,12 +2,12 @@
 
 import re
 from dataclasses import dataclass
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 YOUTUBE_HOSTS = {"youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com"}
 TIKTOK_SHORT_HOSTS = {"vm.tiktok.com", "vt.tiktok.com"}
 _YT_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
-_HANDLE = re.compile(r"^@[A-Za-z0-9._-]+$")
+_HANDLE = re.compile(r"^@[\w.\-]+$")  # handles can be non-Latin (\w is Unicode-aware)
 
 
 @dataclass(frozen=True)
@@ -30,7 +30,7 @@ def detect(raw: str) -> Link:
         text = "https://" + text
     parsed = urlparse(text)
     host = (parsed.hostname or "").lower().removeprefix("www.")
-    parts = [p for p in parsed.path.split("/") if p]
+    parts = [unquote(p) for p in parsed.path.split("/") if p]
     query = parse_qs(parsed.query)
 
     if host == "youtu.be":
@@ -62,7 +62,8 @@ def _youtube(parts: list[str], query: dict) -> Link:
             raise UnsupportedLink("That playlist link has no list id.")
         return Link("youtube", "playlist", f"https://www.youtube.com/playlist?list={list_id}", list_id)
     if _HANDLE.match(first):
-        return Link("youtube", "channel", f"https://www.youtube.com/{first}", first)
+        handle = first.lower()  # handles are case-insensitive: one channel, one source
+        return Link("youtube", "channel", f"https://www.youtube.com/{handle}", handle)
     if first in {"channel", "c", "user"} and len(parts) > 1:
         key = f"{first}/{parts[1]}"
         return Link("youtube", "channel", f"https://www.youtube.com/{key}", key)

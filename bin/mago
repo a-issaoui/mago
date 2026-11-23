@@ -28,8 +28,18 @@ start() {
 
 stop() {
   if alive "$1"; then
-    kill -- "-$(cat "$RUN/$1.pid")" 2>/dev/null || kill "$(cat "$RUN/$1.pid")"
-    echo "$1 stopped"
+    local pid; pid="$(cat "$RUN/$1.pid")"
+    kill -- "-$pid" 2>/dev/null || kill "$pid"
+    if [[ "$1" == worker ]]; then
+      # The worker finishes the video it is on before it exits. A new worker waits for it.
+      for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+      if kill -0 "$pid" 2>/dev/null; then echo "worker is finishing its current video (pid $pid), then exits"; else echo "worker stopped"; fi
+    else
+      # Open browser connections (live updates) keep these alive; nothing is lost by ending them.
+      for _ in $(seq 1 25); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+      kill -9 -- "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+      echo "$1 stopped"
+    fi
   fi
   rm -f "$RUN/$1.pid"
 }

@@ -15,7 +15,7 @@ type Props = {
   ref: Ref<PlayerHandle>;
 };
 
-type YouTubePlayer = { getCurrentTime?: () => number; seekTo: (s: number, allow: boolean) => void; playVideo: () => void; destroy: () => void };
+type YouTubePlayer = { getCurrentTime?: () => number; seekTo?: (s: number, allow: boolean) => void; playVideo?: () => void; destroy?: () => void };
 type YouTubeApi = { Player: new (el: HTMLElement, options: object) => YouTubePlayer };
 
 declare global {
@@ -57,8 +57,9 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
   useImperativeHandle(ref, () => ({
     seek(seconds: number) {
       if (platform === "youtube") {
-        youTube.current?.seekTo(seconds, true);
-        youTube.current?.playVideo();
+        // The methods only exist once the player has loaded.
+        youTube.current?.seekTo?.(seconds, true);
+        youTube.current?.playVideo?.();
       } else {
         const send = (type: string, value?: number) => frame.current?.contentWindow?.postMessage({ type, value, "x-tiktok-player": true }, "https://www.tiktok.com");
         send("seekTo", seconds);

@@ -109,7 +109,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(`/api${path}`, {
       ...init,
-      headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
+      // X-Mago marks the request as coming from this app; the API refuses writes without it.
+      headers: { "x-mago": "1", ...(init?.body ? { "content-type": "application/json" } : {}), ...init?.headers },
     });
   } catch {
     throw new ApiError(0, "Mago's engine isn't answering. Check that it is running.");

@@ -14,6 +14,8 @@ from mago.links import UnsupportedLink, detect
     ("https://www.youtube.com/channel/UC4QobU6STFB0P71PMvOGN5A", "youtube", "channel", "channel/UC4QobU6STFB0P71PMvOGN5A"),
     ("https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI", "youtube", "playlist", "PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI"),
     ("https://www.tiktok.com/@GoBigSystems", "tiktok", "profile", "@gobigsystems"),
+    ("https://www.youtube.com/@CGPGrey", "youtube", "channel", "@cgpgrey"),
+    ("https://www.youtube.com/@%E5%90%8D%E5%89%8D", "youtube", "channel", "@名前"),
     ("https://www.tiktok.com/@tiktok/video/7710348513128828191?lang=en", "tiktok", "video", "7710348513128828191"),
     ("https://vm.tiktok.com/ZMabcdef/", "tiktok", "video", "ZMabcdef"),
     ("https://www.tiktok.com/t/ZTabcdef/", "tiktok", "video", "ZTabcdef"),

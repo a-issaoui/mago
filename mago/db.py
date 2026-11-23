@@ -78,6 +78,10 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS jobs_pending ON jobs(state, next_try_at);
 CREATE INDEX IF NOT EXISTS jobs_video ON jobs(video_id);
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_video ON jobs(video_id)
+    WHERE kind = 'transcribe' AND state IN ('pending','running');
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_source ON jobs(source_id)
+    WHERE kind = 'list' AND state IN ('pending','running');
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 -- What the worker is doing right now (device, heartbeat), for the Activity screen.
 CREATE TABLE IF NOT EXISTS runtime (key TEXT PRIMARY KEY, value TEXT NOT NULL);

@@ -47,19 +47,20 @@ def test_rate_limit_waits_then_other_errors_fail_after_retries(conn, worker, mon
     source_id = library.add_source(conn, URL)
     jobs.enqueue_list(conn, source_id)
     worker.step()
-    outcomes = [fetch.RateLimited("HTTP Error 429"), "ok", "ok"] + [RuntimeError("boom")] * jobs.MAX_ATTEMPTS
+    outcomes = [fetch.RateLimited("HTTP Error 429")] + [RuntimeError("boom")] * (jobs.MAX_ATTEMPTS - 1) + ["ok", "ok"]
     monkeypatch.setattr(pipeline, "process_video", fake_process(outcomes))
     worker.step()  # video 1: rate limited → back in the queue, not due yet
     assert statuses(conn)[0] == "queued"
     assert conn.execute("SELECT next_try_at > datetime('now') FROM jobs WHERE video_id = 1").fetchone()[0] == 1
-    worker.step(), worker.step()
-    assert statuses(conn) == ["queued", "done", "done"]
     assert not worker.step()  # nothing due
-    for _ in range(jobs.MAX_ATTEMPTS):
-        conn.execute("UPDATE jobs SET next_try_at = datetime('now', '-1 second') WHERE state = 'pending'")
+    for _ in range(jobs.MAX_ATTEMPTS - 1):  # video 1 keeps failing for another reason (the 429 used one try)
+        conn.execute("UPDATE jobs SET next_try_at = datetime('now', '-1 second') WHERE state = 'pending' AND video_id = 1")
         worker.step()
     video = library.get_video(conn, 1)
     assert (video["status"], video["error"]) == ("failed", "boom")
+    conn.execute("UPDATE jobs SET next_try_at = datetime('now', '-1 second') WHERE state = 'pending'")
+    worker.step(), worker.step()
+    assert statuses(conn) == ["failed", "done", "done"]
     jobs.enqueue_transcribe(conn, 1)  # Retry button
     assert library.get_video(conn, 1)["status"] == "queued"
 
@@ -84,3 +85,21 @@ def test_scheduled_resync_only_queues_stale_channels(conn):
     assert jobs.enqueue_due_resyncs(conn, 24) == 1
     assert conn.execute("SELECT source_id FROM jobs").fetchall()[0]["source_id"] == channel
     assert jobs.enqueue_due_resyncs(conn, 24) == 0  # already queued
+
+
+def test_rate_limit_holds_back_the_whole_platform(conn, worker, monkeypatch):
+    source_id = library.add_source(conn, URL)
+    jobs.enqueue_list(conn, source_id)
+    worker.step()
+    tiktok = library.add_source(conn, "https://www.tiktok.com/@a/video/123")
+    tiktok_video, _ = library.upsert_video(conn, tiktok, "tiktok", {"platform_video_id": "123", "url": "u"})
+    jobs.enqueue_transcribe(conn, tiktok_video)
+    monkeypatch.setattr(pipeline, "process_video", fake_process([fetch.RateLimited("429"), "ok"]))
+    worker.step()  # first YouTube video is refused
+    waiting = conn.execute(
+        "SELECT v.platform, count(*) AS n FROM jobs j JOIN videos v ON v.id = j.video_id "
+        "WHERE j.state = 'pending' AND j.next_try_at > datetime('now') GROUP BY v.platform").fetchall()
+    assert [(row["platform"], row["n"]) for row in waiting] == [("youtube", 3)]
+    assert "slow down" in library.get_video(conn, 1)["error"]
+    worker.step()  # TikTok is not held back
+    assert library.get_video(conn, tiktok_video)["status"] == "done"

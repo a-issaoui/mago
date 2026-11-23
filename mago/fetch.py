@@ -230,7 +230,8 @@ class VideoSession:
         original = self.info.get("language") or ""
         wanted = [f"{original}-orig", original] if auto else [preferred, original, "en"]
         if auto and not original:
-            wanted = [next((lang for lang in tracks if lang.endswith("-orig")), ""), "en"]
+            # Without the original language we can't tell "en" from a machine translation: leave it to Whisper.
+            wanted = [next((lang for lang in tracks if lang.endswith("-orig")), "")]
         for candidate in filter(None, wanted):
             if candidate in tracks:
                 return candidate

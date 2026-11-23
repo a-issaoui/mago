@@ -98,7 +98,7 @@ export default function ActivityPage() {
           <ul className="divide-y divide-line">
             {data?.up_next.map((video) => (
               <Row key={video.id} video={video}>
-                {video.error && <p className="truncate text-xs text-amber">{`Waiting to retry: ${video.error}`}</p>}
+                {video.error && <p className="truncate text-xs text-amber">{video.error}</p>}
               </Row>
             ))}
           </ul>

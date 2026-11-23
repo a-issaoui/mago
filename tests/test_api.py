@@ -12,7 +12,7 @@ def client(monkeypatch):
     monkeypatch.setattr(fetch, "probe", lambda link: {
         "platform": link.platform, "kind": link.kind, "url": link.url, "title": "jawed", "handle": "@jawed",
         "channel": "jawed", "thumb_url": None, "avatar_url": None, "banner_url": None, "video_count": 1, "duration_s": None})
-    return TestClient(api.app)
+    return TestClient(api.app, headers={"x-mago": "1"})
 
 
 def seed(text="The elephants have really long trunks."):
@@ -75,3 +75,15 @@ def test_settings_are_validated(client):
 def test_media_does_not_expose_the_database(client):
     assert client.get("/media/mago.db").status_code == 404
     assert client.get("/media/thumbs/../mago.db").status_code == 404
+
+
+def test_writes_need_the_app_header_and_a_known_host(client):
+    assert TestClient(api.app).post("/api/retry-failed").status_code == 403  # what a cross-site page could send
+    assert client.post("/api/retry-failed", headers={"x-mago": "1"}).status_code == 200
+    assert client.get("/api/sources", headers={"host": "evil.example"}).status_code == 400  # DNS rebinding
+
+
+def test_adding_a_video_already_in_a_channel_returns_that_channel(client):
+    source_id, _ = seed()
+    added = client.post("/api/sources", json={"url": "https://youtu.be/jNQXAC9IVRw"}).json()
+    assert added["id"] == source_id and len(client.get("/api/sources").json()) == 1

@@ -5,15 +5,18 @@ Run with:  uvicorn mago.api:app --host 127.0.0.1 --port 8010
 
 import asyncio
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import Response, StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -22,6 +25,20 @@ from .links import UnsupportedLink, detect
 
 config.ensure_dirs()
 app = FastAPI(title="Mago", docs_url="/api/docs", openapi_url="/api/openapi.json")
+# No accounts, so two cheap guards against a hostile web page open in the same browser:
+# - only answer to our own host names (stops DNS rebinding);
+# - writes need a custom header, which a cross-site page cannot send without a CORS
+#   preflight that we never approve (stops cross-site form/fetch posts).
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
+
+
+@app.middleware("http")
+async def require_mago_header(request: Request, call_next):
+    if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("x-mago") != "1":
+        return JSONResponse({"detail": "Missing X-Mago header."}, status_code=403)
+    return await call_next(request)
+
+
 for folder in ("thumbs", "avatars"):  # never the whole data directory: the database lives there
     app.mount(f"/media/{folder}", StaticFiles(directory=config.DATA_DIR / folder), name=folder)
 
@@ -120,6 +137,9 @@ def preview(body: UrlBody, conn: sqlite3.Connection = Conn):
 @app.post("/api/sources", status_code=201)
 def add_source(body: UrlBody, conn: sqlite3.Connection = Conn):
     link = _detect(body.url)
+    known = library.find_video(conn, link.key) if link.kind == "video" else None
+    if known:  # already in the library (perhaps inside a channel): don't create an empty twin
+        return _with_covers(conn, [_source(conn, known["source_id"])])[0]
     cached = _preview_cache.get(link.url)
     source_id = library.add_source(conn, link.url, cached[1] if cached else None)
     jobs.enqueue_list(conn, source_id)
@@ -263,7 +283,8 @@ def activity_snapshot(conn: sqlite3.Connection) -> dict:
         "queued": counts.get("queued", 0),
         "active": [dict(row) for row in active],
         "listing": [dict(row) for row in listing],
-        "worker": {"alive": time.time() - heartbeat < 15 or bool(counts.get("transcribing")),
+        # The heartbeat only ticks between jobs, so a job in progress also counts as alive.
+        "worker": {"alive": time.time() - heartbeat < 15 or bool(conn.execute("SELECT 1 FROM jobs WHERE state = 'running'").fetchone()),
                    "device": runtime.get("device"), "model": runtime.get("model")},
     }
 
@@ -352,5 +373,8 @@ def update_ytdlp(conn: sqlite3.Connection = Conn):
         raise HTTPException(502, f"The update failed: {result.stderr.strip()[-300:]}")
     after = fetch.ytdlp_installed_version()
     if after != before:
-        db.set_runtime(conn, reload="1")
+        db.set_runtime(conn, reload="1")  # the worker restarts itself between jobs
+        # This process has the old yt-dlp loaded too (used for previews): restart it once the reply is sent.
+        if os.path.basename(sys.argv[0]) == "uvicorn":
+            threading.Timer(1.0, lambda: os.execv(sys.argv[0], sys.argv)).start()
     return {"before": before, "after": after, "updated": after != before}
