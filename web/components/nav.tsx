@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -74,6 +74,32 @@ export function Sidebar() {
   const sources = useApi<Source[]>("/sources", key);
   const channels = (sources.data ?? []).filter((source) => source.kind !== "video");
 
+  // Which channel is "here": the one being viewed, or the one the open video belongs to.
+  const onChannel = pathname.match(/^\/c\/(\d+)/)?.[1];
+  const onVideo = pathname.match(/^\/v\/(\d+)/)?.[1];
+  const videoSource = useApi<{ source_id: number }>(onVideo ? `/videos/${onVideo}/source` : null);
+  const activeChannel = onChannel ? Number(onChannel) : onVideo ? (videoSource.data?.source_id ?? null) : null;
+  const list = useRef<HTMLUListElement>(null);
+  const listed = channels.length;
+  useEffect(() => {
+    // With a long list the current channel may be out of sight: bring it into view (inside the list
+    // only). Again whenever the list changes height, e.g. when the queue card appears under it.
+    const box = list.current;
+    if (!box) return;
+    const reveal = () => {
+      const item = box.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!item) return;
+      const top = item.offsetTop; // the list is the offset parent (position: relative)
+      if (top < box.scrollTop || top + item.offsetHeight > box.scrollTop + box.clientHeight) {
+        box.scrollTo({ top: top - box.clientHeight / 2 + item.offsetHeight / 2 });
+      }
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [activeChannel, listed]);
+
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-surface/70 backdrop-blur-2xl lg:flex">
       <Link href="/" className="flex h-16 shrink-0 items-center gap-2.5 px-5" aria-label="Mago, library">
@@ -102,16 +128,17 @@ export function Sidebar() {
 
       <div className="mt-6 flex min-h-0 flex-1 flex-col">
         <p className="px-6 text-xs font-medium text-mute">Channels</p>
-        <ul className="mt-2 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-3 [scrollbar-width:thin]">
+        <ul ref={list} className="relative mt-2 min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-3 pb-3 [scrollbar-color:var(--line-strong)_transparent] [scrollbar-width:thin]">
           {channels.map((source) => {
             const picture = mediaUrl(source.avatar_path) ?? thumbUrl(source.covers?.[0]?.thumb_path ?? null);
             return (
               <li key={source.id}>
                 <Link
                   href={`/c/${source.id}`}
-                  aria-current={pathname === `/c/${source.id}` ? "page" : undefined}
-                  className="flex h-10 items-center gap-2.5 rounded-xl px-3 text-sm text-mute transition-colors hover:bg-raised/70 hover:text-ink aria-[current=page]:bg-raised aria-[current=page]:text-ink"
+                  aria-current={activeChannel === source.id ? "page" : undefined}
+                  className="group relative flex h-10 items-center gap-2.5 rounded-xl px-3 text-sm text-mute transition-colors hover:bg-raised/70 hover:text-ink aria-[current=page]:bg-murex-soft aria-[current=page]:font-medium aria-[current=page]:text-ink"
                 >
+                  <span className="glow-bg absolute inset-y-2 left-0 hidden w-[3px] rounded-full group-aria-[current=page]:block" />
                   {picture ? (
                     // eslint-disable-next-line @next/next/no-img-element -- local, already resized
                     <img src={picture} alt="" width={24} height={24} className="size-6 shrink-0 rounded-full bg-raised object-cover" />

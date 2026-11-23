@@ -284,6 +284,15 @@ def video(video_id: int, conn: sqlite3.Connection = Conn):
             "copies": [dict(row) for row in copies]}
 
 
+@app.get("/api/videos/{video_id}/source")
+def video_source(video_id: int, conn: sqlite3.Connection = Conn):
+    """Which channel a video belongs to (the menu highlights it); far lighter than the whole transcript."""
+    row = conn.execute("SELECT source_id FROM videos WHERE id = ?", (video_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "No such video.")
+    return {"source_id": row["source_id"]}
+
+
 @app.post("/api/videos/{video_id}/retry")
 def retry(video_id: int, conn: sqlite3.Connection = Conn):
     if library.get_video(conn, video_id) is None:
