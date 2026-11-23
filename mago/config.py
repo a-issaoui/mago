@@ -22,6 +22,7 @@ DEFAULT_SETTINGS = {
     "translate": "0",  # "1" = Whisper task=translate (to English)
     "tiktok_delay_s": "4",  # TikTok answers 429 without a pause between requests
     "youtube_delay_s": "1",
+    "resync_hours": "0",  # check channels for new videos this often; 0 = only by hand
 }
 
 

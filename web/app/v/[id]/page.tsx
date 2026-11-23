@@ -30,6 +30,13 @@ function toParagraphs(segments: Segment[]): Paragraph[] {
   return paragraphs;
 }
 
+/** TikTok has no titles: yt-dlp cuts the caption short and adds "...". The video's own page shows all of it. */
+function fullTitle(video: Video): string {
+  const title = video.title || "Untitled video";
+  const stem = title.replace(/(\.\.\.|…)$/, "");
+  return stem !== title && video.description?.startsWith(stem) ? video.description : title;
+}
+
 const EXPORTS = [
   { format: "txt", label: "Plain text" },
   { format: "md", label: "Markdown" },
@@ -106,7 +113,7 @@ function VideoView() {
         ) : (
           <Thumb path={video.thumb_path} blur={video.thumb_blur} shape={video.shape} size="lg" status={video.status} progress={video.progress} eager className={video.shape === "tall" ? "mx-auto max-h-[70dvh]" : ""} />
         )}
-        <h1 className="mt-4 text-xl font-semibold leading-snug sm:text-2xl">{video.title || "Untitled video"}</h1>
+        <h1 className="mt-4 text-xl font-semibold leading-snug sm:text-2xl [overflow-wrap:anywhere]">{fullTitle(video)}</h1>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm text-mute">
           <PlatformMark platform={video.platform} className="size-3.5" />
           {video.source_kind !== "video" && video.source_title ? (

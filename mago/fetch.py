@@ -273,4 +273,11 @@ def first_entries(link: Link, count: int) -> list[dict]:
 
 
 def ytdlp_version() -> str:
+    """The version this process has loaded (an update needs a restart to take effect)."""
     return yt_dlp.version.__version__
+
+
+def ytdlp_installed_version() -> str:
+    from importlib.metadata import version
+
+    return version("yt-dlp")

@@ -6,7 +6,9 @@ pace towards YouTube and TikTok.
 """
 
 import logging
+import os
 import signal
+import sys
 import sqlite3
 import time
 
@@ -108,8 +110,24 @@ class Worker:
     def run_forever(self) -> None:
         recovered = jobs.recover(self.conn)
         log.info("worker started (%d jobs recovered, yt-dlp %s)", recovered, fetch.ytdlp_version())
+        last_resync_check = 0.0
         while self.running:
             db.set_runtime(self.conn, heartbeat=int(time.time()))
+            if db.get_runtime(self.conn).get("reload") == "1":
+                # yt-dlp was updated from Settings: start again so the new version is loaded.
+                db.set_runtime(self.conn, reload="0")
+                log.info("reloading after a yt-dlp update")
+                self.conn.close()
+                os.execv(sys.executable, [sys.executable, "-m", "mago.worker"])
+            if time.monotonic() - last_resync_check > 300:
+                last_resync_check = time.monotonic()
+                try:
+                    hours = float(db.get_settings(self.conn)["resync_hours"])
+                except ValueError:
+                    hours = 0.0
+                queued = jobs.enqueue_due_resyncs(self.conn, hours)
+                if queued:
+                    log.info("scheduled re-sync: %d channels queued", queued)
             if not self.step():
                 self._sleep(1.0)
 

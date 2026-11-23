@@ -5,7 +5,10 @@ Run with:  uvicorn mago.api:app --host 127.0.0.1 --port 8010
 
 import asyncio
 import json
+import shutil
 import sqlite3
+import subprocess
+import sys
 import time
 from typing import Literal
 
@@ -61,6 +64,7 @@ class SettingsBody(BaseModel):
     translate: Literal["0", "1"] | None = None
     tiktok_delay_s: float | None = Field(default=None, ge=0, le=120)
     youtube_delay_s: float | None = Field(default=None, ge=0, le=120)
+    resync_hours: float | None = Field(default=None, ge=0, le=720)
 
 
 def _detect(url: str):
@@ -328,5 +332,25 @@ def write_settings(body: SettingsBody, conn: sqlite3.Connection = Conn):
 def system(conn: sqlite3.Connection = Conn):
     from .whisper_engine import free_vram_mb, gpu_lock_busy
 
-    return {"ytdlp_version": fetch.ytdlp_version(), "gpu_free_mb": free_vram_mb(),
+    return {"ytdlp_version": fetch.ytdlp_installed_version(), "gpu_free_mb": free_vram_mb(),
             "gpu_lock_busy": gpu_lock_busy(), **activity_snapshot(conn)["worker"]}
+
+
+@app.post("/api/system/update-ytdlp")
+def update_ytdlp(conn: sqlite3.Connection = Conn):
+    """Install the newest yt-dlp (TikTok and YouTube break old versions often),
+    then tell the worker to reload it. The command is fixed: nothing from the request reaches it."""
+    before = fetch.ytdlp_installed_version()
+    uv = shutil.which("uv")
+    if uv is None:
+        raise HTTPException(500, "The uv tool isn't installed, so yt-dlp can't be updated from here.")
+    result = subprocess.run(
+        [uv, "pip", "install", "--python", sys.executable, "--upgrade", "yt-dlp", "yt-dlp-ejs"],
+        capture_output=True, text=True, timeout=300,
+    )
+    if result.returncode != 0:
+        raise HTTPException(502, f"The update failed: {result.stderr.strip()[-300:]}")
+    after = fetch.ytdlp_installed_version()
+    if after != before:
+        db.set_runtime(conn, reload="1")
+    return {"before": before, "after": after, "updated": after != before}

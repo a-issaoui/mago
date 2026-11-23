@@ -75,6 +75,22 @@ def recover(conn: sqlite3.Connection) -> int:
     return conn.execute("UPDATE jobs SET state = 'pending', next_try_at = datetime('now') WHERE state = 'running'").rowcount
 
 
+def enqueue_due_resyncs(conn: sqlite3.Connection, every_hours: float) -> int:
+    """Queue a fresh listing for every channel not checked for `every_hours`.
+    Single videos never change, so they are left alone."""
+    if every_hours <= 0:
+        return 0
+    rows = conn.execute(
+        "SELECT id FROM sources WHERE kind != 'video' AND last_synced_at IS NOT NULL "
+        "AND last_synced_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.source_id = sources.id "
+        "AND kind = 'list' AND (state IN ('pending','running') OR finished_at > datetime('now', ?)))",
+        (f"-{every_hours * 3600:.0f} seconds", f"-{every_hours * 3600:.0f} seconds"),
+    ).fetchall()
+    for row in rows:
+        enqueue_list(conn, row["id"])
+    return len(rows)
+
+
 def backoff_s(attempts: int, rate_limited: bool) -> int:
     base = 60 if rate_limited else 20
     return min(base * 2 ** (attempts - 1), 1800)

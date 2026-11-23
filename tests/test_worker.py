@@ -72,3 +72,15 @@ def test_restart_recovers_interrupted_jobs(conn, worker):
     library.set_status(conn, job["video_id"], "transcribing", progress=0.4)
     assert jobs.recover(conn) == 1
     assert statuses(conn) == ["queued"] * 3 and jobs.claim(conn)["id"] == job["id"]
+
+
+def test_scheduled_resync_only_queues_stale_channels(conn):
+    channel = library.add_source(conn, URL)
+    single = library.add_source(conn, "https://youtu.be/jNQXAC9IVRw")
+    fresh = library.add_source(conn, "https://www.youtube.com/@fresh")
+    conn.execute("UPDATE sources SET last_synced_at = datetime('now', '-30 hours') WHERE id IN (?, ?)", (channel, single))
+    conn.execute("UPDATE sources SET last_synced_at = datetime('now', '-1 hours') WHERE id = ?", (fresh,))
+    assert jobs.enqueue_due_resyncs(conn, 0) == 0  # off
+    assert jobs.enqueue_due_resyncs(conn, 24) == 1
+    assert conn.execute("SELECT source_id FROM jobs").fetchall()[0]["source_id"] == channel
+    assert jobs.enqueue_due_resyncs(conn, 24) == 0  # already queued

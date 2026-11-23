@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, useApi } from "@/lib/api";
 
-type Settings = { whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string; youtube_delay_s: string };
+type Settings = { whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string; youtube_delay_s: string; resync_hours: string };
 type System = { ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; alive: boolean; device: string | null; model: string | null };
 
 const MODELS = [
@@ -30,6 +30,21 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(""), 2500);
     } catch (error) {
       setFailure(error instanceof Error ? error.message : "Couldn't save that.");
+    }
+  }
+
+  const [updating, setUpdating] = useState(false);
+  async function updateYtdlp() {
+    setUpdating(true);
+    setFailure("");
+    try {
+      const result = await api<{ before: string; after: string; updated: boolean }>("/system/update-ytdlp", { method: "POST" });
+      setSaved(result.updated ? `Updated yt-dlp from ${result.before} to ${result.after}.` : `yt-dlp ${result.after} is already the newest.`);
+      system.reload();
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "The update failed.");
+    } finally {
+      setUpdating(false);
     }
   }
 
@@ -110,6 +125,21 @@ export default function SettingsPage() {
             </div>
           </section>
 
+          <section aria-labelledby="resync-heading" className="space-y-5">
+            <h2 id="resync-heading" className="text-xl font-semibold">
+              New videos
+            </h2>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium">Check channels for new videos</span>
+              <select className={field} value={String(Number(values.resync_hours))} onChange={(event) => save({ resync_hours: Number(event.target.value) })}>
+                <option value="0">Only when I press the button on a channel</option>
+                <option value="6">Every 6 hours</option>
+                <option value="24">Every day</option>
+                <option value="168">Every week</option>
+              </select>
+            </label>
+          </section>
+
           <section aria-labelledby="system-heading">
             <h2 id="system-heading" className="text-xl font-semibold">
               This computer
@@ -130,6 +160,12 @@ export default function SettingsPage() {
                 ))}
               </dl>
             )}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={updateYtdlp} disabled={updating} className="h-10 rounded-full border border-line px-5 text-sm font-semibold hover:bg-raised disabled:opacity-60">
+                {updating ? "Updating yt-dlp" : "Update yt-dlp"}
+              </button>
+              <p className="max-w-sm text-sm text-mute">yt-dlp is the tool that reads YouTube and TikTok. Update it when links stop working.</p>
+            </div>
           </section>
         </div>
       )}
