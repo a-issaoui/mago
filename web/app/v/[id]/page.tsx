@@ -3,9 +3,11 @@
 import { Fragment, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ALargeSmallIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, LinkIcon, ListIcon, SearchIcon } from "lucide-react";
+import { ALargeSmallIcon, BookmarkPlusIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, LinkIcon, ListIcon, SearchIcon } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { Breadcrumb } from "@/components/breadcrumb";
+import { CollectionPicker } from "@/components/collections";
+import { NoteField } from "@/components/note-field";
 import { PlatformMark } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
 import { Player, type PlayerHandle } from "@/components/player";
@@ -15,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioG
 import { Switch } from "@/components/ui/switch";
 import { useTitle } from "@/hooks/use-title";
 import { act } from "@/lib/act";
-import { api, clock, compact, isWorking, platformName, shortDate, statusLabel, useApi, type ChannelOffer, type Segment, type Source, type Video } from "@/lib/api";
+import { api, clock, compact, isWorking, platformName, shortDate, statusLabel, useApi, type ChannelOffer, type Collection, type Segment, type Source, type Video } from "@/lib/api";
 
 type Line = Segment & { index: number };
 type Paragraph = { start: number; first: number; last: number; lines: Line[] };
@@ -109,7 +111,12 @@ const EXPORTS = [
 
 /** One paragraph. Memoised: while the video plays only the paragraph holding the current line re-renders.
  *  Lines are clickable; the timestamp is the keyboard stop, so a long transcript is not thousands of tab stops. */
-const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, onSeek, onCopyLink }: { paragraph: Paragraph; active: number; needle: string; onSeek: (seconds: number) => void; onCopyLink: (seconds: number) => void }) {
+type Range = [number, number];
+type ParagraphProps = {
+  paragraph: Paragraph; active: number; needle: string; marks: Range[];
+  onSeek: (seconds: number) => void; onCopyLink: (seconds: number) => void; onSave: (paragraph: Paragraph) => void;
+};
+const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, marks, onSeek, onCopyLink, onSave }: ParagraphProps) {
   return (
     <p className="group/paragraph relative mb-5 grid grid-cols-[3.6rem_minmax(0,1fr)] gap-x-2">
       {/* Mouse only (the C key does the same for the current moment), so it adds no keyboard stops. */}
@@ -125,6 +132,16 @@ const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, o
       </button>
       <button
         type="button"
+        tabIndex={-1}
+        onClick={() => onSave(paragraph)}
+        className="absolute left-7 top-8 hidden size-7 place-items-center rounded-md text-mute hover:bg-raised hover:text-murex group-hover/paragraph:grid"
+        aria-label={`Save the paragraph at ${clock(paragraph.start)} as a highlight`}
+        title="Save this paragraph as a highlight"
+      >
+        <BookmarkPlusIcon className="size-3.5" />
+      </button>
+      <button
+        type="button"
         onClick={() => onSeek(paragraph.start)}
         className="time -ml-1.5 mt-[0.25em] flex h-7 items-center self-start rounded-md px-1.5 text-xs font-medium text-mute hover:bg-raised hover:text-murex"
         aria-label={`Play from ${clock(paragraph.start)}`}
@@ -134,12 +151,14 @@ const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, o
       <span>
         {paragraph.lines.map((line) => {
           const hit = needle && line.text.toLowerCase().includes(needle);
+          const saved = marks.some(([from, to]) => line.start >= from - 0.01 && line.start <= to + 0.01);
           return (
             <span
               key={line.index}
               data-line={line.index}
-              onClick={() => onSeek(line.start)}
-              className={`cursor-pointer rounded-[3px] box-decoration-clone py-0.5 transition-colors hover:bg-raised ${line.index === active ? "bg-murex-soft shadow-[inset_0_-2px_0_var(--murex)]" : ""} ${hit ? "!bg-[var(--mark)]" : ""}`}
+              data-start={line.start}
+              onClick={() => window.getSelection()?.isCollapsed !== false && onSeek(line.start)}
+              className={`cursor-pointer rounded-[3px] box-decoration-clone py-0.5 transition-colors hover:bg-raised ${line.index === active ? "bg-murex-soft shadow-[inset_0_-2px_0_var(--murex)]" : saved ? "shadow-[inset_0_-2px_0_var(--sea)]" : ""} ${hit ? "!bg-[var(--mark)]" : ""}`}
             >
               {line.text}{" "}
             </span>
@@ -164,6 +183,39 @@ function VideoView() {
   }
   const start = linked > 0 ? linked : (resumeAt ?? 0);
   const [reading, setReadingPref] = useReading();
+  const collections = useApi<Collection[]>("/collections", key);
+  // Highlights: the passages already saved (underlined in the transcript), and the current text selection.
+  const savedKey = (data?.video.highlights ?? []).map((item) => `${item.id}:${item.start_s}:${item.end_s}`).join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the list's content so paragraphs don't re-render on every refresh
+  const marks = useMemo<Range[]>(() => (data?.video.highlights ?? []).map((item) => [item.start_s, item.end_s]), [savedKey]);
+  const [selected, setSelected] = useState<{ start_s: number; end_s: number; text: string } | null>(null);
+  const saveHighlight = useCallback(
+    (passage: { start_s: number; end_s: number; text: string }) =>
+      act(() => api(`/videos/${id}/highlights`, { method: "POST", body: JSON.stringify(passage) }), "Highlight saved").then(() => {
+        window.getSelection()?.removeAllRanges();
+        setSelected(null);
+        reload();
+      }),
+    [id, reload],
+  );
+  const saveParagraph = useCallback(
+    (paragraph: Paragraph) => saveHighlight({ start_s: paragraph.start, end_s: paragraph.lines.at(-1)!.start, text: paragraph.lines.map((line) => line.text).join(" ") }),
+    [saveHighlight],
+  );
+  useEffect(() => {
+    const onSelection = () => {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim() ?? "";
+      const lineOf = (node: Node | null) => (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>("[data-start]");
+      const first = lineOf(selection?.anchorNode ?? null);
+      const last = lineOf(selection?.focusNode ?? null);
+      if (!selection || selection.isCollapsed || text.length < 3 || !first || !last || !list.current?.contains(first)) return setSelected(null);
+      const bounds = [Number(first.dataset.start), Number(last.dataset.start)].sort((a, b) => a - b);
+      setSelected({ start_s: bounds[0], end_s: bounds[1], text: text.replace(/\s+/g, " ") });
+    };
+    document.addEventListener("selectionchange", onSelection);
+    return () => document.removeEventListener("selectionchange", onSelection);
+  }, []);
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
@@ -359,6 +411,9 @@ function VideoView() {
                 <ExternalLinkIcon className="size-3" />
               </a>
             </p>
+            <div className="mt-3">
+              <CollectionPicker videoId={video.id} collections={collections.data ?? []} memberOf={video.collection_ids ?? []} onChanged={() => { reload(); collections.reload(); }} />
+            </div>
             {data.original && (
               <p className="panel mt-4 !rounded-2xl px-4 py-3 text-sm">
                 {video.duplicate_kind === "clip" ? "A clip of " : "Says the same as "}
@@ -403,6 +458,14 @@ function VideoView() {
           </div>
         </div>
 
+        {selected && (
+          <div className="fixed inset-x-0 bottom-20 z-40 flex justify-center px-4 lg:bottom-6 lg:pl-64">
+            <Button size="lg" className="h-11 px-5 font-semibold shadow-xl" onMouseDown={(event) => event.preventDefault()} onClick={() => saveHighlight(selected)}>
+              <BookmarkPlusIcon />
+              {`Save highlight (${selected.text.split(" ").length} words)`}
+            </Button>
+          </div>
+        )}
         <section aria-labelledby="transcript-heading" className="min-w-0">
           <h2 id="transcript-heading" className="sr-only">
             Transcript
@@ -494,6 +557,27 @@ function VideoView() {
                 <span className="flex items-center gap-1.5"><Kbd>J</Kbd><Kbd>L</Kbd> back or forward 10 s</span>
                 <span className="flex items-center gap-1.5"><Kbd>C</Kbd> copy a link to this moment</span>
               </p>
+              {(video.highlights ?? []).length > 0 && (
+                <details className="panel mt-4 !rounded-2xl px-4 py-3 text-sm">
+                  <summary className="cursor-pointer font-medium">{`${video.highlights!.length} ${video.highlights!.length === 1 ? "highlight" : "highlights"} in this video`}</summary>
+                  <ul className="mt-3 space-y-4">
+                    {video.highlights!.map((item) => (
+                      <li key={item.id}>
+                        <button type="button" onClick={() => seek(item.start_s)} className="block w-full border-l-2 border-sea pl-3 text-left font-serif text-[15px] leading-relaxed hover:border-murex">
+                          <span className="time mr-2 text-xs text-murex">{clock(item.start_s)}</span>
+                          {item.text}
+                        </button>
+                        <NoteField id={item.id} note={item.note} onSaved={reload} />
+                        <div className="flex justify-end">
+                          <Button variant="ghost" size="sm" className="text-mute" onClick={() => act(() => api(`/highlights/${item.id}`, { method: "DELETE" }), "Highlight removed").then(reload)}>
+                            Remove
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
               <div ref={list} className={`mt-5 font-serif ${SIZES[reading.size]} ${WIDTHS[reading.width]}`}>
                 {segments.length === 0 && <p className="font-sans text-base text-mute">No speech was found in this video.</p>}
                 {needle && matches === 0 && <p className="font-sans text-base text-mute">{`"${query.trim()}" isn't said in this video.`}</p>}
@@ -507,7 +591,7 @@ function VideoView() {
                         <span className="h-px flex-1 self-center bg-line" />
                       </h3>
                     )}
-                    <ParagraphView key={paragraph.first} paragraph={paragraph} active={active >= paragraph.first && active <= paragraph.last ? active : -1} needle={needle} onSeek={seek} onCopyLink={copyMoment} />
+                    <ParagraphView key={paragraph.first} paragraph={paragraph} active={active >= paragraph.first && active <= paragraph.last ? active : -1} needle={needle} marks={marks} onSeek={seek} onCopyLink={copyMoment} onSave={saveParagraph} />
                     </Fragment>
                   ) : null,
                 )}

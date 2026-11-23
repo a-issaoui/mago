@@ -6,13 +6,15 @@ import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
 import { Pager } from "@/components/pager";
 import { PageHeader } from "@/components/page-header";
+import { CollectionCard, NewCollectionDialog } from "@/components/collections";
 import { PasteBox } from "@/components/paste-box";
+import { Button } from "@/components/ui/button";
 import { Strip } from "@/components/strip";
 import { Pills } from "@/components/pills";
 import { SourceCard } from "@/components/source-card";
 import { Sheet, VideoCard } from "@/components/video-card";
 import { useTitle } from "@/hooks/use-title";
-import { useApi, type Platform, type Source, type Video } from "@/lib/api";
+import { useApi, type Collection, type Platform, type Source, type Video } from "@/lib/api";
 
 type Page = { total: number; items: Video[] };
 
@@ -27,6 +29,8 @@ function Library() {
   const sources = useApi<Source[]>("/sources", key);
   const recent = useApi<Page>(`/videos?sort=recent&limit=24${filter}`, key);
   const working = useApi<Page>(`/videos?status=working&limit=12${filter}`, key);
+  const collections = useApi<Collection[]>("/collections", key);
+  const [creating, setCreating] = useState(false);
   const going = useApi<Page>(`/videos?sort=continue&limit=12${filter}`, key);
   const SINGLES = 24;
   const [singlesPage, setSinglesPage] = useState(1);
@@ -129,6 +133,29 @@ function Library() {
               <SourceCard key={source.id} source={source} />
             ))}
           </div>
+        </section>
+      )}
+
+      {!empty && collections.data && !platform && (
+        <section aria-labelledby="collections-heading">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 id="collections-heading" className="text-lg font-semibold tracking-tight">
+              Collections {collections.data.length > 0 && <span className="tabular font-normal text-mute">{collections.data.length}</span>}
+            </h2>
+            <Button variant="outline" onClick={() => setCreating(true)}>
+              New collection
+            </Button>
+          </div>
+          {collections.data.length === 0 ? (
+            <p className="text-sm text-mute">Group videos from any channel by topic or project. Create one here, then add videos from their pages.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
+              {collections.data.map((collection) => (
+                <CollectionCard key={collection.id} collection={collection} />
+              ))}
+            </div>
+          )}
+          <NewCollectionDialog open={creating} onOpenChange={setCreating} onCreated={(made) => router.push(`/k/${made.id}`)} />
         </section>
       )}
 

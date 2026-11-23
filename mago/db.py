@@ -137,6 +137,38 @@ CREATE TRIGGER IF NOT EXISTS revision_videos_delete AFTER DELETE ON videos BEGIN
 CREATE TRIGGER IF NOT EXISTS revision_settings_insert AFTER INSERT ON settings BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
 CREATE TRIGGER IF NOT EXISTS revision_settings_update AFTER UPDATE ON settings BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
 CREATE TRIGGER IF NOT EXISTS revision_settings_delete AFTER DELETE ON settings BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+-- Collections group videos across channels; highlights are passages the owner saved, with a note.
+CREATE TABLE IF NOT EXISTS collections (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS collection_videos (
+    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (collection_id, video_id)
+);
+CREATE INDEX IF NOT EXISTS collection_videos_video ON collection_videos(video_id);
+CREATE TABLE IF NOT EXISTS highlights (
+    id INTEGER PRIMARY KEY,
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    start_s REAL NOT NULL,
+    end_s REAL NOT NULL,
+    text TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS highlights_video ON highlights(video_id, start_s);
+CREATE TRIGGER IF NOT EXISTS revision_collections_insert AFTER INSERT ON collections BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_collections_update AFTER UPDATE ON collections BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_collections_delete AFTER DELETE ON collections BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_collection_videos_insert AFTER INSERT ON collection_videos BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_collection_videos_update AFTER UPDATE ON collection_videos BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_collection_videos_delete AFTER DELETE ON collection_videos BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_highlights_insert AFTER INSERT ON highlights BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_highlights_update AFTER UPDATE ON highlights BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_highlights_delete AFTER DELETE ON highlights BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
 -- One row per running MCP server (each Claude session starts its own), so the interface can show
 -- whether Claude is connected and what it last asked for.
 CREATE TABLE IF NOT EXISTS mcp_sessions (

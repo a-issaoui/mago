@@ -173,3 +173,32 @@ def test_backup_once_a_day(tmp_path, monkeypatch):
     import sqlite3
     assert sqlite3.connect(made).execute("SELECT count(*) FROM sources").fetchone()[0] >= 0
     conn.close()
+
+
+def test_collections_and_highlights(client):
+    source_id, video_id = seed()
+    made = client.post("/api/collections", json={"name": "  Local   SEO "})
+    assert made.status_code == 201 and made.json()["name"] == "Local SEO"
+    collection_id = made.json()["id"]
+    assert client.post("/api/collections", json={"name": "local seo"}).json()["id"] == collection_id  # same name, same collection
+    assert client.post(f"/api/collections/{collection_id}/videos", json={"video_id": video_id}).status_code == 204
+    client.post(f"/api/collections/{collection_id}/videos", json={"video_id": video_id})  # twice is harmless
+    assert client.get("/api/collections").json()[0]["videos"] == 1
+    assert client.get("/api/videos", params={"collection_id": collection_id}).json()["total"] == 1
+    assert client.get(f"/api/videos/{video_id}").json()["video"]["collection_ids"] == [collection_id]
+    assert client.put(f"/api/collections/{collection_id}", json={"name": "Zoo"}).json()["name"] == "Zoo"
+    assert client.post(f"/api/collections/999/videos", json={"video_id": video_id}).status_code == 404
+
+    saved = client.post(f"/api/videos/{video_id}/highlights", json={"start_s": 2, "end_s": 4.5, "text": "really   long trunks", "note": "use this"})
+    highlight_id = saved.json()["id"]
+    page = client.get(f"/api/videos/{video_id}").json()["video"]["highlights"]
+    assert page == [{"id": highlight_id, "start_s": 2.0, "end_s": 4.5, "text": "really long trunks", "note": "use this"}]
+    assert client.get("/api/highlights", params={"q": "trunks"}).json()[0]["title"] == "Me at the zoo"
+    assert client.get("/api/highlights", params={"q": "100%"}).json() == []
+    assert client.put(f"/api/highlights/{highlight_id}", json={"note": "changed"}).status_code == 204
+    exported = client.get("/api/highlights/export").text
+    assert "> really long trunks" in exported and "&t=2s" in exported and "changed" in exported
+    assert client.delete(f"/api/highlights/{highlight_id}").status_code == 204
+    assert client.get("/api/highlights").json() == []
+    assert client.delete(f"/api/collections/{collection_id}").status_code == 204
+    assert client.get(f"/api/videos/{video_id}").status_code == 200  # the video stays

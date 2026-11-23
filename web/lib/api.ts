@@ -30,12 +30,21 @@ export type Video = {
   source_handle?: string | null;
   source_kind?: string;
   position_s?: number | null;
+  collection_ids?: number[];
+  highlights?: Highlight[];
   chapters?: { start: number; title: string }[];
   duplicate_of?: number | null;
   duplicate_kind?: "repeat" | "clip" | null;
   channel_name?: string | null;
   channel_url?: string | null;
 };
+
+export type Highlight = { id: number; start_s: number; end_s: number; text: string; note: string };
+export type HighlightRow = Highlight & {
+  video_id: number; title: string | null; platform: Platform; thumb_path: string | null; thumb_blur: string | null; shape: Shape;
+  source_title: string | null; created_at: string;
+};
+export type Collection = { id: number; name: string; videos: number; covers: Cover[] };
 
 export type ChannelOffer = { name: string; handle: string; url: string; source_id: number | null };
 export type PlatformCounts = { total: number; done: number; working: number; failed: number };

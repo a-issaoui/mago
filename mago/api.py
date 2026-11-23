@@ -93,6 +93,25 @@ class PositionBody(BaseModel):
     seconds: float = Field(ge=0, le=200_000)
 
 
+class NameBody(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class MemberBody(BaseModel):
+    video_id: int
+
+
+class HighlightBody(BaseModel):
+    start_s: float = Field(ge=0)
+    end_s: float = Field(ge=0)
+    text: str = Field(min_length=1, max_length=8000)
+    note: str = Field(default="", max_length=4000)
+
+
+class NoteBody(BaseModel):
+    note: str = Field(max_length=4000)
+
+
 class PauseBody(BaseModel):
     platform: Literal["all", "youtube", "tiktok"]
     paused: bool
@@ -232,6 +251,7 @@ def videos(
     sort: Literal["newest", "oldest", "views", "longest", "recent", "continue"] = "newest",
     platform: Literal["youtube", "tiktok"] | None = None,
     single: bool = False,
+    collection_id: int | None = None,
     q: str = Query(default="", max_length=200),
     limit: int = Query(default=60, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
@@ -243,6 +263,9 @@ def videos(
     if platform:
         where.append("v.platform = ?")
         params.append(platform)
+    if collection_id is not None:
+        where.append("v.id IN (SELECT video_id FROM collection_videos WHERE collection_id = ?)")
+        params.append(collection_id)
     if single:  # videos added on their own, not as part of a channel
         where.append("s.kind = 'video'")
     if status:
@@ -295,6 +318,10 @@ def video(video_id: int, conn: sqlite3.Connection = Conn):
         found["chapters"] = json.loads(found.get("chapters") or "[]")
     except ValueError:
         found["chapters"] = []
+    found["collection_ids"] = [row["collection_id"] for row in conn.execute(
+        "SELECT collection_id FROM collection_videos WHERE video_id = ?", (video_id,))]
+    found["highlights"] = [dict(row) for row in conn.execute(
+        "SELECT id, start_s, end_s, text, note FROM highlights WHERE video_id = ? ORDER BY start_s, id", (video_id,))]
     return {"video": found, "segments": segments, "channel": channel,
             "original": {"id": original["id"], "title": original["title"], "platform": original["platform"]} if original else None,
             "copies": [dict(row) for row in copies]}
@@ -326,6 +353,136 @@ like ll me more most much my no not now of off on once one only or other our out
 such t than that the their them then there these they thing things think this those through to too under up us ve very was way we well were
 what when where which while who why will with would yeah you your um uh okay oh actually kind lot make made want gonna going people time
 back little something two first new good look need come many these been""".split())
+
+
+def _collections(conn: sqlite3.Connection) -> list[dict]:
+    rows = [dict(row) for row in conn.execute(
+        "SELECT c.id, c.name, c.created_at, count(m.video_id) AS videos FROM collections c "
+        "LEFT JOIN collection_videos m ON m.collection_id = c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE")]
+    for row in rows:
+        row["covers"] = [dict(cover) for cover in conn.execute(
+            "SELECT v.thumb_path, v.thumb_blur, v.shape FROM collection_videos m JOIN videos v ON v.id = m.video_id "
+            "WHERE m.collection_id = ? AND v.thumb_path IS NOT NULL ORDER BY m.added_at DESC LIMIT 4", (row["id"],))]
+    return rows
+
+
+def _collection(conn: sqlite3.Connection, collection_id: int) -> dict:
+    found = next((c for c in _collections(conn) if c["id"] == collection_id), None)
+    if found is None:
+        raise HTTPException(404, "No such collection.")
+    return found
+
+
+@app.get("/api/collections")
+def collections(conn: sqlite3.Connection = Conn):
+    return _collections(conn)
+
+
+@app.post("/api/collections", status_code=201)
+def create_collection(body: NameBody, conn: sqlite3.Connection = Conn):
+    name = " ".join(body.name.split())
+    existing = conn.execute("SELECT id FROM collections WHERE name = ?", (name,)).fetchone()
+    collection_id = existing["id"] if existing else conn.execute("INSERT INTO collections(name) VALUES (?)", (name,)).lastrowid
+    return _collection(conn, collection_id)
+
+
+@app.get("/api/collections/{collection_id}")
+def collection(collection_id: int, conn: sqlite3.Connection = Conn):
+    return _collection(conn, collection_id)
+
+
+@app.put("/api/collections/{collection_id}")
+def rename_collection(collection_id: int, body: NameBody, conn: sqlite3.Connection = Conn):
+    _collection(conn, collection_id)
+    try:
+        conn.execute("UPDATE collections SET name = ? WHERE id = ?", (" ".join(body.name.split()), collection_id))
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(409, "Another collection already has that name.") from error
+    return _collection(conn, collection_id)
+
+
+@app.delete("/api/collections/{collection_id}", status_code=204)
+def delete_collection(collection_id: int, conn: sqlite3.Connection = Conn):
+    """Deletes the grouping only; the videos and transcripts stay in the library."""
+    _collection(conn, collection_id)
+    conn.execute("DELETE FROM collections WHERE id = ?", (collection_id,))
+
+
+@app.post("/api/collections/{collection_id}/videos", status_code=204)
+def add_to_collection(collection_id: int, body: MemberBody, conn: sqlite3.Connection = Conn):
+    _collection(conn, collection_id)
+    if library.get_video(conn, body.video_id) is None:
+        raise HTTPException(404, "No such video.")
+    conn.execute("INSERT OR IGNORE INTO collection_videos(collection_id, video_id) VALUES (?, ?)", (collection_id, body.video_id))
+
+
+@app.delete("/api/collections/{collection_id}/videos/{video_id}", status_code=204)
+def remove_from_collection(collection_id: int, video_id: int, conn: sqlite3.Connection = Conn):
+    conn.execute("DELETE FROM collection_videos WHERE collection_id = ? AND video_id = ?", (collection_id, video_id))
+
+
+_HIGHLIGHT_COLUMNS = (
+    "h.id, h.video_id, h.start_s, h.end_s, h.text, h.note, h.created_at, v.title, v.platform, v.platform_video_id, v.url, "
+    "v.thumb_path, v.thumb_blur, v.shape, v.published_at, s.title AS source_title"
+)
+
+
+def highlight_rows(conn: sqlite3.Connection, q: str = "", video_id: int | None = None, limit: int = 500) -> list[dict]:
+    where, params = ["1=1"], []
+    if video_id is not None:
+        where.append("h.video_id = ?")
+        params.append(video_id)
+    for word in q.split()[:8]:
+        where.append("(h.text LIKE ? ESCAPE '\\' OR h.note LIKE ? ESCAPE '\\' OR v.title LIKE ? ESCAPE '\\')")
+        like = "%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        params += [like, like, like]
+    rows = conn.execute(
+        f"SELECT {_HIGHLIGHT_COLUMNS} FROM highlights h JOIN videos v ON v.id = h.video_id JOIN sources s ON s.id = v.source_id "
+        f"WHERE {' AND '.join(where)} ORDER BY h.created_at DESC, h.id DESC LIMIT ?", (*params, limit))
+    return [dict(row) for row in rows]
+
+
+@app.get("/api/highlights")
+def highlights(q: str = Query(default="", max_length=200), video_id: int | None = None, conn: sqlite3.Connection = Conn):
+    return highlight_rows(conn, q, video_id)
+
+
+@app.get("/api/highlights/export")
+def export_highlights(conn: sqlite3.Connection = Conn):
+    """Every highlight as one Markdown file, grouped by video, each with a link to its moment."""
+    lines, current = ["# Highlights", ""], None
+    for row in sorted(highlight_rows(conn, limit=5000), key=lambda r: (r["video_id"], r["start_s"])):
+        if row["video_id"] != current:
+            current = row["video_id"]
+            lines += [f"## {row['title'] or row['url']}", "", f"{row['source_title'] or ''} {row['url']}".strip(), ""]
+        lines.append(f"> {row['text']}")
+        lines.append(f"> [{export.clock(row['start_s'])}]({library.timestamp_url(row, row['start_s'])})")
+        if row["note"]:
+            lines += ["", row["note"]]
+        lines.append("")
+    return Response("\n".join(lines), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="mago-highlights.md"'})
+
+
+@app.post("/api/videos/{video_id}/highlights", status_code=201)
+def add_highlight(video_id: int, body: HighlightBody, conn: sqlite3.Connection = Conn):
+    if library.get_video(conn, video_id) is None:
+        raise HTTPException(404, "No such video.")
+    highlight_id = conn.execute(
+        "INSERT INTO highlights(video_id, start_s, end_s, text, note) VALUES (?,?,?,?,?)",
+        (video_id, body.start_s, max(body.end_s, body.start_s), " ".join(body.text.split()), body.note.strip())).lastrowid
+    return {"id": highlight_id}
+
+
+@app.put("/api/highlights/{highlight_id}", status_code=204)
+def edit_highlight(highlight_id: int, body: NoteBody, conn: sqlite3.Connection = Conn):
+    if conn.execute("UPDATE highlights SET note = ? WHERE id = ?", (body.note.strip(), highlight_id)).rowcount == 0:
+        raise HTTPException(404, "No such highlight.")
+
+
+@app.delete("/api/highlights/{highlight_id}", status_code=204)
+def delete_highlight(highlight_id: int, conn: sqlite3.Connection = Conn):
+    conn.execute("DELETE FROM highlights WHERE id = ?", (highlight_id,))
 
 
 @app.get("/api/stats")

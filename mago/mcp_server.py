@@ -328,6 +328,59 @@ def list_videos(source: str | None = None, status: Literal["all", "done", "worki
         conn.close()
 
 
+@tool
+def list_collections(collection: str | None = None) -> dict:
+    """The owner's collections (groups of videos across channels). Give a name or id to list its videos.
+
+    Args:
+        collection: Optional collection name or id.
+    """
+    conn = db.connect()
+    try:
+        rows = [dict(row) for row in conn.execute(
+            "SELECT c.id, c.name, count(m.video_id) AS videos FROM collections c "
+            "LEFT JOIN collection_videos m ON m.collection_id = c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE")]
+        if collection is None:
+            return {"collections": rows}
+        found = next((row for row in rows if str(row["id"]) == str(collection).strip() or row["name"].lower() == str(collection).strip().lower()), None)
+        if found is None:
+            raise ValueError(f"No collection matches {collection!r}. There are: {', '.join(row['name'] for row in rows) or 'none'}.")
+        ids = conn.execute("SELECT video_id FROM collection_videos WHERE collection_id = ? ORDER BY added_at DESC", (found["id"],))
+        return {"collection": found, "videos": [_video_summary(library.get_video(conn, row["video_id"])) for row in ids]}
+    finally:
+        conn.close()
+
+
+@tool
+def list_highlights(query: str = "", video: str | None = None, limit: int = 50) -> dict:
+    """Passages the owner saved as highlights, with their notes. These are what the owner found
+    worth keeping, so prefer them when asked what mattered in a video or on a topic.
+
+    Args:
+        query: Optional words to look for in the passage, the note or the video title.
+        video: Optional video (id, platform id or link) to list highlights for.
+        limit: Maximum highlights (1 to 200).
+    """
+    from .api import highlight_rows
+
+    conn = db.connect()
+    try:
+        video_id = None
+        if video:
+            found = library.find_video(conn, video)
+            if found is None:
+                raise ValueError(f"No video matches {video!r}.")
+            video_id = found["id"]
+        rows = highlight_rows(conn, query, video_id, max(1, min(limit, 200)))
+        return {"highlights": [
+            {"video_id": row["video_id"], "title": row["title"], "channel": row["source_title"], "at": export.clock(row["start_s"]),
+             "text": row["text"], "note": row["note"] or None, "saved": row["created_at"][:10],
+             "url": library.timestamp_url(row, row["start_s"])}
+            for row in rows]}
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------- adding
 
 

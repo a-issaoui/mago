@@ -4,7 +4,7 @@ import { useEffect, useId, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { ActivityIcon, BarChart3Icon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
+import { ActivityIcon, BarChart3Icon, FolderIcon, HighlighterIcon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
 import { openPalette } from "@/components/command-palette";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
@@ -12,13 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { act } from "@/lib/act";
-import { api, mcpLine, mediaUrl, thumbUrl, useApi, type Source } from "@/lib/api";
+import { api, mcpLine, mediaUrl, thumbUrl, useApi, type Collection, type Source } from "@/lib/api";
 
 const links = [
   { href: "/", label: "Library", icon: LibraryIcon },
   { href: "/search", label: "Search", icon: SearchIcon },
+  { href: "/highlights", label: "Highlights", icon: HighlighterIcon },
   { href: "/activity", label: "Activity", icon: ActivityIcon },
-  { href: "/stats", label: "Statistics", icon: BarChart3Icon },
+  { href: "/stats", label: "Statistics", icon: BarChart3Icon, wideOnly: true },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -30,7 +31,7 @@ function useNavState() {
   const total = snapshot ? snapshot.platforms.youtube.total + snapshot.platforms.tiktok.total : 0;
   const done = snapshot ? snapshot.platforms.youtube.done + snapshot.platforms.tiktok.done : 0;
   const isCurrent = (href: string) =>
-    href === "/" ? pathname === "/" || pathname.startsWith("/c/") || pathname.startsWith("/v/") : pathname.startsWith(href);
+    href === "/" ? pathname === "/" || pathname.startsWith("/c/") || pathname.startsWith("/v/") || pathname.startsWith("/k/") : pathname.startsWith(href);
   const working = (snapshot?.active.length ?? 0) + (snapshot?.listing.length ?? 0) > 0;
   return { pathname, snapshot, busy, stopped, total, done, isCurrent, working };
 }
@@ -75,6 +76,7 @@ export function Sidebar() {
   const key = useLiveKey(800);
   const sources = useApi<Source[]>("/sources", key);
   const channels = (sources.data ?? []).filter((source) => source.kind !== "video");
+  const collections = useApi<Collection[]>("/collections", key);
 
   // Which channel is "here": the one being viewed, or the one the open video belongs to.
   const onChannel = pathname.match(/^\/c\/(\d+)/)?.[1];
@@ -154,6 +156,21 @@ export function Sidebar() {
             );
           })}
           {sources.data && channels.length === 0 && <li className="px-3 py-2 text-sm text-mute">Channels you add appear here.</li>}
+          {(collections.data ?? []).length > 0 && <li className="px-3 pb-1 pt-4 text-xs font-medium text-mute">Collections</li>}
+          {(collections.data ?? []).map((collection) => (
+            <li key={`k${collection.id}`}>
+              <Link
+                href={`/k/${collection.id}`}
+                aria-current={pathname === `/k/${collection.id}` ? "page" : undefined}
+                className="group relative flex h-10 items-center gap-2.5 rounded-xl px-3 text-sm text-mute transition-colors hover:bg-raised/70 hover:text-ink aria-[current=page]:bg-murex-soft aria-[current=page]:font-medium aria-[current=page]:text-ink"
+              >
+                <span className="glow-bg absolute inset-y-2 left-0 hidden w-[3px] rounded-full group-aria-[current=page]:block" />
+                <FolderIcon className="size-[18px] shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{collection.name}</span>
+                <span className="tabular text-xs">{collection.videos}</span>
+              </Link>
+            </li>
+          ))}
         </ul>
       </div>
 
@@ -235,7 +252,7 @@ export function MobileNav() {
   const { busy, stopped, isCurrent } = useNavState();
   return (
     <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-night/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl lg:hidden">
-      {links.map(({ href, label, icon: Icon }) => (
+      {links.filter((link) => !("wideOnly" in link)).map(({ href, label, icon: Icon }) => (
         <Link
           key={href}
           href={href}
@@ -244,7 +261,7 @@ export function MobileNav() {
         >
           <span className="glow-bg absolute inset-x-5 top-0 hidden h-[3px] rounded-full group-aria-[current=page]:block" />
           <Icon className="size-5 group-aria-[current=page]:text-murex" />
-          {label === "Statistics" ? "Stats" : label}
+          {label}
           {href === "/activity" && busy > 0 && (
             <span className="absolute left-1/2 top-1.5 ml-2">
               <BusyCount count={busy} stopped={stopped} />
