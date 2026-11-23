@@ -165,6 +165,9 @@ def probe(link: Link) -> dict:
     if link.platform == "tiktok":
         title = first.get("channel") or info.get("title") or link.key
         handle = link.key
+    elif link.kind == "playlist":  # a course is known by its own name; the channel goes underneath
+        title = info.get("title") or link.key
+        handle = info.get("channel") or info.get("uploader") or info.get("uploader_id")
     else:
         title = info.get("channel") or info.get("title") or link.key
         handle = info.get("uploader_id") or link.key
