@@ -39,7 +39,7 @@ const LANGUAGES = [
   { value: "it", label: "Italian" },
 ];
 const RESYNC = [
-  { value: "0", label: "Only when I press the button on a channel" },
+  { value: "0", label: "Only when I ask" },
   { value: "6", label: "Every 6 hours" },
   { value: "24", label: "Every day" },
   { value: "168", label: "Every week" },
@@ -115,7 +115,7 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHeader title="Settings" note="Changes are saved as you make them and apply to the next video." />
-      <div className="grid items-start gap-x-10 gap-y-4 xl:grid-cols-[200px_minmax(0,760px)]">
+      <div className="grid items-start gap-x-10 gap-y-4 xl:grid-cols-[200px_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="hidden xl:sticky xl:top-24 xl:block">
         <ul className="space-y-0.5 border-l border-line">
           {["Transcribing", "Pace", "New videos and repeats", "Claude", "This computer"].map((name) => (

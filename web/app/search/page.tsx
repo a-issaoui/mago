@@ -84,7 +84,7 @@ function SearchView() {
         : `${lineCount} ${lineCount === 1 ? "line" : "lines"} in ${groups.length} ${groups.length === 1 ? "video" : "videos"}`;
 
   return (
-    <div className="max-w-4xl">
+    <div>
       <PageHeader title="Search" note="Find the moment something was said. Each result opens the video at that second." />
       <label className="flex h-14 items-center gap-3 rounded-[22px] border border-line-strong bg-surface px-5 shadow-[var(--shadow-panel)] transition-[border-color,box-shadow] focus-within:border-murex focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--murex)_22%,transparent)] sm:h-16 sm:px-6">
         <SearchIcon className="size-5 shrink-0 text-mute" />

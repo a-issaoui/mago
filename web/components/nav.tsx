@@ -205,7 +205,7 @@ export function Topbar() {
   const { working } = useNavState();
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-night/75 backdrop-blur-2xl">
-      <div className="mx-auto flex h-14 max-w-[1320px] items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-10">
+      <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-10">
         <Link href="/" className="flex items-center gap-2 lg:hidden" aria-label="Mago, library">
           <Mark className="size-6" live={working} />
           <span className="display text-xl">Mago</span>
@@ -213,14 +213,14 @@ export function Topbar() {
         <button
           type="button"
           onClick={openPalette}
-          className="ml-auto flex h-10 min-w-0 items-center gap-2.5 rounded-full border border-line-strong bg-surface/70 pl-3.5 pr-2 text-sm text-mute transition-[border-color,box-shadow] hover:border-murex hover:text-ink lg:ml-0 lg:w-[420px]"
+          className="ml-auto flex h-10 min-w-0 items-center gap-2.5 rounded-full border border-line-strong bg-surface/70 pl-3.5 pr-2 text-sm text-mute transition-[border-color,box-shadow] hover:border-murex hover:text-ink lg:ml-0 lg:flex-1"
           aria-label="Search and commands"
         >
           <SearchIcon className="size-4 shrink-0" />
           <span className="hidden flex-1 truncate text-left sm:block">Search what was said, or jump to a channel</span>
           <Kbd className="hidden sm:inline-flex">Ctrl K</Kbd>
         </button>
-        <div className="lg:ml-auto">
+        <div>
           <ThemeButton />
         </div>
       </div>

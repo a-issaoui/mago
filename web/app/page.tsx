@@ -62,7 +62,7 @@ function Library() {
         ) : (
           <PageHeader title="Library" note="Paste a video or a channel to add it. Everything you add is transcribed and searchable." />
         )}
-        <div className="max-w-3xl">
+        <div>
           <PasteBox onAdded={refresh} />
           {sources.error && <p className="mt-4 text-sm text-amber">{sources.error}</p>}
         </div>

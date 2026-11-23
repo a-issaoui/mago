@@ -389,7 +389,7 @@ function VideoView() {
                 <span className="flex items-center gap-1.5"><Kbd>J</Kbd><Kbd>L</Kbd> back or forward 10 s</span>
                 <span className="flex items-center gap-1.5"><Kbd>C</Kbd> copy a link to this moment</span>
               </p>
-              <div ref={list} className="mt-5 max-w-[68ch] font-serif text-[17px] leading-[1.75]">
+              <div ref={list} className="mt-5 font-serif text-[17px] leading-[1.75]">
                 {segments.length === 0 && <p className="font-sans text-base text-mute">No speech was found in this video.</p>}
                 {needle && matches === 0 && <p className="font-sans text-base text-mute">{`"${query.trim()}" isn't said in this video.`}</p>}
                 {paragraphs.map((paragraph) =>
