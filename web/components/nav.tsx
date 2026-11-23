@@ -205,22 +205,23 @@ export function Topbar() {
   const { working } = useNavState();
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-night/75 backdrop-blur-2xl">
-      <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-10">
+      <div className="flex h-14 items-center gap-3 px-4 sm:px-6 lg:grid lg:h-16 lg:grid-cols-[1fr_minmax(0,26rem)_1fr] lg:px-10">
         <Link href="/" className="flex items-center gap-2 lg:hidden" aria-label="Mago, library">
           <Mark className="size-6" live={working} />
           <span className="display text-xl">Mago</span>
         </Link>
+        <span className="hidden lg:block" aria-hidden />
         <button
           type="button"
           onClick={openPalette}
-          className="ml-auto flex h-10 min-w-0 items-center gap-2.5 rounded-full border border-line-strong bg-surface/70 pl-3.5 pr-2 text-sm text-mute transition-[border-color,box-shadow] hover:border-murex hover:text-ink lg:ml-0 lg:flex-1"
+          className="ml-auto flex h-10 min-w-0 items-center gap-2.5 rounded-full border border-line-strong bg-surface/70 pl-3.5 pr-2 text-sm text-mute transition-[border-color,box-shadow] hover:border-murex hover:text-ink lg:ml-0 lg:h-9 lg:w-full"
           aria-label="Search and commands"
         >
           <SearchIcon className="size-4 shrink-0" />
-          <span className="hidden flex-1 truncate text-left sm:block">Search what was said, or jump to a channel</span>
+          <span className="hidden flex-1 truncate text-left sm:block">Search or jump to</span>
           <Kbd className="hidden sm:inline-flex">Ctrl K</Kbd>
         </button>
-        <div>
+        <div className="lg:justify-self-end">
           <ThemeButton />
         </div>
       </div>
