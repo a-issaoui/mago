@@ -1,0 +1,21 @@
+[project]
+name = "mago"
+version = "0.1.0"
+description = "Transcripts for YouTube and TikTok videos and channels"
+requires-python = ">=3.12"
+dependencies = [
+    "yt-dlp", "yt-dlp-ejs", "faster-whisper", "av<19",  # faster-whisper 1.2.1 breaks on av 19
+    "nvidia-cublas-cu12", "nvidia-cudnn-cu12",
+    "fastapi", "uvicorn[standard]", "pillow", "mcp", "httpx",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: hits real YouTube/TikTok links (run with -m network)", "gpu: runs Whisper"]
+addopts = "-m 'not network'"
+
+[tool.ruff]
+line-length = 130
