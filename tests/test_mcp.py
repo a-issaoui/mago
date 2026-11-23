@@ -40,27 +40,53 @@ def seeded():
     conn.close()
 
 
-def test_the_four_tools_work_over_stdio(seeded):
+def test_reading_adding_and_running_mago_over_stdio(seeded):
     source_id, video_id = seeded
-    assert call("tools/list") == ["add_source", "get_transcript", "list_sources", "search"]
+    assert set(call("tools/list")) >= {
+        "search", "get_transcript", "get_channel_transcripts", "list_sources", "list_videos", "transcribe", "add_source",
+        "sync_source", "retry", "queue_status", "queue_control", "get_settings", "update_settings", "export_channel",
+        "remove_source", "remove_video", "services", "update_ytdlp"}
 
-    hit = call("search", query="elephants")["hits"][0]
+    # reading
+    hit = call("search", query="elephants", source="@jawed")["hits"][0]
     assert (hit["video_id"], hit["at"], hit["match"]) == (video_id, "0:01", "all words")
-    assert "Do not guess" in call("search", query="xylophone")["notice"]
     assert hit["url"] == "https://www.youtube.com/watch?v=jNQXAC9IVRw&t=1s"
-
+    assert "Do not guess" in call("search", query="xylophone")["notice"]
     by_link = call("get_transcript", video="https://youtu.be/jNQXAC9IVRw", timestamps=True)
     assert by_link["transcript"] == "[0:01] Here we are in front of the elephants.\n[0:12] They have really long trunks."
     assert call("get_transcript", video=str(video_id), start_s=10)["transcript"] == "[0:12] They have really long trunks."
     assert call("get_transcript", video="nope")[0] == "error"
+    channel = call("get_channel_transcripts", source="jawed")
+    assert (channel["transcribed_videos"], channel["returned"]) == (1, 1) and "elephants" in channel["videos"][0]["transcript"]
+    assert "next_offset" not in channel
+    assert call("list_sources")["sources"][0]["transcribed"] == 1
+    assert call("list_videos", source=str(source_id), status="done")["videos"][0]["title"] == "Me at the zoo"
+    assert call("list_videos", status="failed")["total"] == 0
 
-    listed = call("list_sources")["sources"]
-    assert (listed[0]["source_id"], listed[0]["transcribed"]) == (source_id, 1)
-    assert call("list_sources", source_id=source_id)["videos"][0]["title"] == "Me at the zoo"
-
-    assert call("add_source", url="https://youtu.be/jNQXAC9IVRw")["already_in_library"] is True
-    added = call("add_source", url="https://www.tiktok.com/@tiktok")
+    # adding: a known video comes straight back; a channel is queued; nothing runs without the worker
+    assert "elephants" in call("transcribe", url="https://youtu.be/jNQXAC9IVRw")["transcript"]
+    added = call("transcribe", url="https://www.tiktok.com/@tiktok")
     assert (added["kind"], added["already_in_library"]) == ("profile", False)
-    queued = db.connect().execute("SELECT count(*) FROM jobs WHERE kind = 'list' AND source_id = ?", (added["source_id"],)).fetchone()[0]
-    assert queued == 1
-    assert call("add_source", url="https://vimeo.com/1")[0] == "error"
+    assert any("worker is not running" in note for note in added["blockers"])
+    waiting = call("transcribe", url="https://youtu.be/aaaaaaaaaaa", wait_seconds=0)
+    assert waiting["transcript"] is None and waiting["blockers"]
+    assert call("transcribe", url="https://vimeo.com/1")[0] == "error"
+    assert call("sync_source", source="@jawed")["source"]["source_id"] == source_id
+
+    # running
+    assert call("queue_control", action="stop", platform="youtube") == {"stopped": ["youtube"]}
+    status = call("queue_status")
+    assert status["stopped_by_owner"] == ["youtube"] and status["worker_running"] is False
+    assert call("queue_control", action="resume") == {"stopped": []}
+    assert call("update_settings", youtube_delay_s=9, skip_repeats=False)["youtube_delay_s"] == "9"
+    assert call("update_settings", youtube_delay_s=999)[0] == "error"
+    exported = call("export_channel", source="@jawed", format="txt")
+    assert exported["videos"] == 1 and "elephants" in open(exported["path"]).read()
+    assert call("services")["ok"] is True
+    assert call("retry", video=str(video_id))["queued"] == 1  # back in the queue (no worker here to run it)
+
+    # deleting needs an explicit confirm
+    assert call("remove_video", video=str(video_id))["would_delete"]["video_id"] == video_id
+    assert call("list_videos", source="@jawed")["total"] == 1
+    assert call("remove_source", source="@jawed", confirm=True)["deleted"]["source_id"] == source_id
+    assert all(s["handle"] != "@jawed" for s in call("list_sources")["sources"])

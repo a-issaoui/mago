@@ -49,8 +49,17 @@ it falls back to the CPU.
 claude mcp add mago --scope user -- /path/to/mago/.venv/bin/python -m mago.mcp_server
 ```
 
-Tools: `search`, `get_transcript`, `add_source`, `list_sources`. `add_source` only queues work, so the worker must be
-running for anything to be transcribed.
+The server gives Claude full control of Mago:
+
+| For | Tools |
+| --- | --- |
+| Reading | `search`, `get_transcript` (one video), `get_channel_transcripts` (a whole channel, page by page), `list_sources`, `list_videos` |
+| Adding | `transcribe` (a video link: waits and returns the transcript; a channel link: queues every video), `add_source`, `sync_source`, `retry` |
+| Running | `queue_status`, `queue_control` (stop/resume), `get_settings`, `update_settings`, `export_channel`, `services` (start/stop/restart), `update_ytdlp` |
+| Deleting | `remove_source`, `remove_video` (both need `confirm=True`) |
+
+Transcribing needs the worker to be running; the tools say so when it isn't, or when downloads are stopped.
+A Claude session loads the tool list when it starts, so restart the session after the server changes.
 
 ## Tests
 
