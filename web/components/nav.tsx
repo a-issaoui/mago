@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { ActivityIcon, BarChart3Icon, FolderIcon, FoldersIcon, HighlighterIcon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
+import { ActivityIcon, BarChart3Icon, ChevronRightIcon, FolderIcon, FoldersIcon, HighlighterIcon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
 import { openPalette } from "@/components/command-palette";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
@@ -78,6 +78,21 @@ export function Sidebar() {
   const sources = useApi<Source[]>("/sources", key);
   const channels = (sources.data ?? []).filter((source) => source.kind !== "video");
   const collections = useApi<Collection[]>("/collections", key);
+  // Collections that hold others can be folded away; the choice is remembered in this browser.
+  const [folded, setFolded] = useState<number[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("mago-folded") ?? "[]");
+    } catch {
+      return [];
+    }
+  });
+  const fold = (id: number) => {
+    const next = folded.includes(id) ? folded.filter((other) => other !== id) : [...folded, id];
+    setFolded(next);
+    try {
+      localStorage.setItem("mago-folded", JSON.stringify(next));
+    } catch {}
+  };
 
   // Which channel is "here": the one being viewed, or the one the open video belongs to.
   const onChannel = pathname.match(/^\/c\/(\d+)/)?.[1];
@@ -158,20 +173,38 @@ export function Sidebar() {
           })}
           {sources.data && channels.length === 0 && <li className="px-3 py-2 text-sm text-mute">Channels you add appear here.</li>}
           {(collections.data ?? []).length > 0 && <li className="px-3 pb-1 pt-4 text-xs font-medium text-mute">Collections</li>}
-          {collectionTree(collections.data ?? []).map(({ collection, inside }) => (
-            <li key={`k${collection.id}`} className={inside ? "ml-[22px] border-l border-line pl-1.5" : undefined}>
-              <Link
-                href={`/k/${collection.id}`}
-                aria-current={pathname === `/k/${collection.id}` ? "page" : undefined}
-                className="group relative flex h-10 items-center gap-2.5 rounded-xl px-3 text-sm text-mute transition-colors hover:bg-raised/70 hover:text-ink aria-[current=page]:bg-murex-soft aria-[current=page]:font-medium aria-[current=page]:text-ink"
-              >
-                <span className="glow-bg absolute inset-y-2 left-0 hidden w-[3px] rounded-full group-aria-[current=page]:block" />
-                {collection.children > 0 ? <FoldersIcon className="size-[18px] shrink-0" /> : <FolderIcon className={inside ? "size-4 shrink-0" : "size-[18px] shrink-0"} />}
-                <span className={`min-w-0 flex-1 truncate ${collection.children > 0 ? "font-medium text-ink" : ""}`}>{collection.name}</span>
-                <span className="tabular text-xs">{collection.videos}</span>
-              </Link>
-            </li>
-          ))}
+          {collectionTree(collections.data ?? [])
+            // Inside a folded collection only the one being viewed stays visible.
+            .filter(({ collection, inside }) => !inside || !folded.includes(collection.parent_id ?? -1) || pathname === `/k/${collection.id}`)
+            .map(({ collection, inside }) => {
+              const holds = collection.children > 0;
+              const open = !folded.includes(collection.id);
+              return (
+                <li key={`k${collection.id}`} className={inside ? "ml-[22px] border-l border-line pl-1.5" : "relative"}>
+                  <Link
+                    href={`/k/${collection.id}`}
+                    aria-current={pathname === `/k/${collection.id}` ? "page" : undefined}
+                    className={`group relative flex h-10 items-center gap-2.5 rounded-xl px-3 text-sm text-mute transition-colors hover:bg-raised/70 hover:text-ink aria-[current=page]:bg-murex-soft aria-[current=page]:font-medium aria-[current=page]:text-ink ${holds ? "pr-10" : ""}`}
+                  >
+                    <span className="glow-bg absolute inset-y-2 left-0 hidden w-[3px] rounded-full group-aria-[current=page]:block" />
+                    {holds ? <FoldersIcon className="size-[18px] shrink-0" /> : <FolderIcon className={inside ? "size-4 shrink-0" : "size-[18px] shrink-0"} />}
+                    <span className={`min-w-0 flex-1 truncate ${holds ? "font-medium text-ink" : ""}`}>{collection.name}</span>
+                    <span className="tabular text-xs">{collection.videos}</span>
+                  </Link>
+                  {holds && (
+                    <button
+                      type="button"
+                      onClick={() => fold(collection.id)}
+                      aria-expanded={open}
+                      aria-label={`${open ? "Hide" : "Show"} the collections in ${collection.name}`}
+                      className="absolute right-1 top-1 grid size-8 place-items-center rounded-lg text-mute hover:bg-raised hover:text-ink"
+                    >
+                      <ChevronRightIcon className={`size-4 transition-transform ${open ? "rotate-90" : ""}`} />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
         </ul>
       </div>
 
