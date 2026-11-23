@@ -32,7 +32,7 @@ _UNAVAILABLE = (
     "private", "unavailable", "removed", "deleted", "not available", "members-only",
     "members only", "confirm your age", "age-restricted", "copyright", "terminated",
     "does not exist", "no longer available", "this live event", "premieres in",
-    "geo restrict", "in your country", "status code 404", "status_code 10204",
+    "geo restrict", "in your country", "status code 404", "status_code 10204", "no video formats found",
 )
 _RATE_LIMITED = ("429", "too many requests", "rate limit", "rate-limit", "not a bot", "captcha")
 

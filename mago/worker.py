@@ -44,10 +44,12 @@ class Worker:
         for video_id in result["new_video_ids"]:
             jobs.enqueue_transcribe(self.conn, video_id, priority)
         thumbs.save_missing_thumbs(self.conn, source_id)
-        if link.kind == "video":
-            video = self.conn.execute("SELECT title FROM videos WHERE source_id = ?", (source_id,)).fetchone()
-            if video:
-                self.conn.execute("UPDATE sources SET title = coalesce(title, ?) WHERE id = ?", (video["title"], source_id))
+        if link.kind == "video" and not source["title"]:  # added without a preview (for example through MCP)
+            preview = fetch.probe(link)
+            self.conn.execute(
+                "UPDATE sources SET title = ?, handle = coalesce(handle, ?) WHERE id = ?",
+                (preview["channel"] or preview["title"], preview["handle"], source_id),
+            )
         return f"listed {result['listed']}, new {result['new']}"
 
     def run_transcribe(self, job: dict) -> str:

@@ -276,7 +276,12 @@ def activity(conn: sqlite3.Connection = Conn):
         f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title FROM videos v JOIN sources s ON s.id = v.source_id "
         "WHERE v.status IN ('failed','skipped') ORDER BY v.id DESC LIMIT 100"
     )
-    return {**snapshot, "up_next": [dict(row) for row in up_next], "failed": [dict(row) for row in failed]}
+    failed_sources = conn.execute(
+        "SELECT s.id, s.title, s.handle, s.url, j.log AS error FROM sources s JOIN jobs j ON j.id = "
+        "(SELECT max(id) FROM jobs WHERE source_id = s.id AND kind = 'list') WHERE j.state = 'failed'"
+    )
+    return {**snapshot, "up_next": [dict(row) for row in up_next], "failed": [dict(row) for row in failed],
+            "failed_sources": [dict(row) for row in failed_sources]}
 
 
 @app.get("/api/events")
@@ -301,8 +306,10 @@ async def events():
         finally:
             conn.close()
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    # No "; charset" on the content type: Caddy only streams (instead of buffering) an exact text/event-stream.
+    response = StreamingResponse(stream(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    response.raw_headers.append((b"content-type", b"text/event-stream"))
+    return response
 
 
 @app.get("/api/settings")

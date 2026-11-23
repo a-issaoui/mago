@@ -22,7 +22,7 @@ def add_source(conn: sqlite3.Connection, raw_url: str, preview: dict | None = No
     cursor = conn.execute(
         "INSERT INTO sources(platform, kind, url, handle, title, video_count) VALUES (?,?,?,?,?,?)",
         (link.platform, link.kind, link.url, preview.get("handle") or (link.key if link.kind != "video" else None),
-         preview.get("title"), preview.get("video_count")),
+         preview.get("channel") if link.kind == "video" else preview.get("title"), preview.get("video_count")),
     )
     return cursor.lastrowid
 
