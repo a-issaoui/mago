@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, useApi } from "@/lib/api";
 
 type Settings = { whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string; youtube_delay_s: string; youtube_per_hour: string; resync_hours: string };
-type System = { ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; alive: boolean; device: string | null; model: string | null };
+type System = { accounts: { youtube: boolean; tiktok: boolean }; cookies_dir: string; ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; alive: boolean; device: string | null; model: string | null };
 
 const MODELS = [
   { value: "tiny", label: "Tiny", note: "fastest, rough" },
@@ -156,6 +156,28 @@ export default function SettingsPage() {
               </select>
             </label>
           </section>
+
+          {system.data && (
+            <section aria-labelledby="accounts-heading">
+              <h2 id="accounts-heading" className="text-xl font-semibold">
+                Signing in (optional)
+              </h2>
+              <p className="mt-1 max-w-prose text-sm text-mute">
+                Mago works without an account. Signing in to YouTube raises its limit from about 300 to about 2,000 videos an hour and opens age-restricted and members-only videos; it does not lift the separate limit on captions. On TikTok it only opens private videos. Either platform can ban an account used this way, so use one you can afford to lose, not your main one.
+              </p>
+              <dl className="mt-3 divide-y divide-line text-sm">
+                {(["youtube", "tiktok"] as const).map((name) => (
+                  <div key={name} className="flex justify-between gap-4 py-2.5">
+                    <dt className="text-mute">{name === "youtube" ? "YouTube" : "TikTok"}</dt>
+                    <dd className="text-right font-medium">{system.data!.accounts[name] ? "Signed in with a cookies file" : "Not signed in"}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-3 max-w-prose text-sm text-mute">
+                To sign in, export that account&apos;s cookies as a cookies.txt file from a private browser window and save it as <span className="break-all font-medium text-ink">{`${system.data.cookies_dir}/youtube.txt`}</span> (or tiktok.txt). Delete the file to sign out. It is picked up on the next video.
+              </p>
+            </section>
+          )}
 
           <section aria-labelledby="system-heading">
             <h2 id="system-heading" className="text-xl font-semibold">

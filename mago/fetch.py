@@ -12,7 +12,7 @@ from pathlib import Path
 import yt_dlp
 from yt_dlp.utils import DownloadError
 
-from . import captions
+from . import captions, config
 from .links import Link
 
 
@@ -35,6 +35,20 @@ _UNAVAILABLE = (
     "geo restrict", "in your country", "status code 404", "status_code 10204",
 )
 _RATE_LIMITED = ("429", "too many requests", "rate limit", "rate-limit", "rate-limited", "not a bot", "captcha", "try again later")
+
+
+def account_file(platform: str) -> Path | None:
+    """The cookies file for a platform, if the owner has put one there. Signing in is optional:
+    it raises YouTube's hourly limit and opens age-restricted or private videos, but the account
+    can be banned for it, so use one you can afford to lose."""
+    path = config.COOKIES_DIR / f"{platform}.txt"
+    return path if path.is_file() and path.stat().st_size > 0 else None
+
+
+def _account(url_or_platform: str) -> dict:
+    platform = "tiktok" if "tiktok" in url_or_platform else "youtube"
+    path = account_file(platform)
+    return {"cookiefile": str(path)} if path else {}
 
 
 class FetchError(Exception):
@@ -62,7 +76,7 @@ def _classify(error: Exception) -> FetchError:
 def _extract(url: str, **options) -> dict:
     process = options.pop("process", True)
     try:
-        with yt_dlp.YoutubeDL({**_QUIET, **options}) as ydl:
+        with yt_dlp.YoutubeDL({**_QUIET, **_account(url), **options}) as ydl:
             return ydl.extract_info(url, download=False, process=process)
     except DownloadError as error:
         raise _classify(error) from error
@@ -197,7 +211,7 @@ class VideoSession:
         # speech, so take the smallest file that has both video and audio.
         chosen = "worst[acodec!=none][vcodec!=none]/worst" if platform == "tiktok" else "bestaudio[abr<=96]/bestaudio/worst"
         self._ydl = yt_dlp.YoutubeDL({
-            **_QUIET, "format": chosen, "max_filesize": 500 * 1024 * 1024,
+            **_QUIET, **_account(platform), "format": chosen, "max_filesize": 500 * 1024 * 1024,
             "outtmpl": str(audio_dir / "%(extractor)s_%(id)s.%(ext)s"), "overwrites": True,
         })
         self.info: dict = {}

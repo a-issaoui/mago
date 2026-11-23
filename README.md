@@ -95,6 +95,10 @@ data/                   the library: mago.db, thumbs/, avatars/, logs/ (not in g
   an hour) and Activity shows when it resumes. The pause does not use up a video's retries.
 - **Single videos and their channel.** Adding one video never adds its channel. The video page and the paste box
   offer "the whole channel" as a separate, deliberate step. If the channel is added later, the video moves into it.
+- **Signing in is optional.** Google sign-in no longer works with yt-dlp; the only way is a cookies.txt exported
+  from a browser, saved as `data/cookies/youtube.txt` or `data/cookies/tiktok.txt` (delete it to sign out). On
+  YouTube it raises the limit to about 2,000 videos an hour and opens age-restricted videos, but reportedly does
+  not lift the caption limit, and the account can be banned. Use a throwaway account. Not tested with a real account.
 - **A video belongs to one source.** A playlist whose videos are already in a channel you added shows as empty.
 - **No accounts, so two guards instead.** The API and the web server only answer to `mago.test`, `127.0.0.1` and
   `localhost` (set `MAGO_HOSTS` for the web server to change that), and every write needs an `X-Mago: 1` header.

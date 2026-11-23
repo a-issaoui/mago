@@ -9,6 +9,8 @@ DB_PATH = DATA_DIR / "mago.db"
 THUMBS_DIR = DATA_DIR / "thumbs"
 AVATARS_DIR = DATA_DIR / "avatars"
 AUDIO_DIR = DATA_DIR / "audio"
+# Optional sign-in: a cookies.txt exported from a browser, one per platform (youtube.txt, tiktok.txt).
+COOKIES_DIR = DATA_DIR / "cookies"
 
 # The another program project shares the single GPU through this flock.
 GPU_LOCK = Path(

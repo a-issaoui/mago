@@ -403,7 +403,9 @@ def write_settings(body: SettingsBody, conn: sqlite3.Connection = Conn):
 def system(conn: sqlite3.Connection = Conn):
     from .whisper_engine import free_vram_mb, gpu_lock_busy
 
-    return {"ytdlp_version": fetch.ytdlp_installed_version(), "gpu_free_mb": free_vram_mb(),
+    return {"accounts": {name: fetch.account_file(name) is not None for name in ("youtube", "tiktok")},
+            "cookies_dir": str(config.COOKIES_DIR),
+            "ytdlp_version": fetch.ytdlp_installed_version(), "gpu_free_mb": free_vram_mb(),
             "gpu_lock_busy": gpu_lock_busy(), **activity_snapshot(conn)["worker"]}
 
 
