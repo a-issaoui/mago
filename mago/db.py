@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS videos (
     channel_uid TEXT,
     duplicate_of INTEGER REFERENCES videos(id) ON DELETE SET NULL,
     duplicate_kind TEXT CHECK (duplicate_kind IN ('repeat','clip')),
+    chapters TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (platform, platform_video_id)
 );
@@ -116,6 +117,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_video ON jobs(video_id)
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_source ON jobs(source_id)
     WHERE kind = 'list' AND state IN ('pending','running');
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Where the owner stopped in each video. Its own table (no trigger), so saving the position every
+-- few seconds while watching doesn't make every screen refresh.
+CREATE TABLE IF NOT EXISTS positions (
+    video_id INTEGER PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+    seconds REAL NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 -- A counter bumped by every change to what the screens show (not by the worker's heartbeat), so the
 -- interface can refresh the moment something changes, whoever changed it.
 CREATE TABLE IF NOT EXISTS revision (id INTEGER PRIMARY KEY CHECK (id = 1), n INTEGER NOT NULL);
@@ -163,12 +171,34 @@ def _migrate(conn: sqlite3.Connection) -> None:
     """Columns added after the first version (CREATE TABLE IF NOT EXISTS won't add them)."""
     have = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
     for column, kind in (("channel_name", "TEXT"), ("channel_url", "TEXT"), ("channel_uid", "TEXT"),
-                         ("duplicate_of", "INTEGER REFERENCES videos(id) ON DELETE SET NULL"), ("duplicate_kind", "TEXT")):
+                         ("duplicate_of", "INTEGER REFERENCES videos(id) ON DELETE SET NULL"), ("duplicate_kind", "TEXT"),
+                         ("chapters", "TEXT")):
         if column not in have:
             try:
                 conn.execute(f"ALTER TABLE videos ADD COLUMN {column} {kind}")
             except sqlite3.OperationalError:  # the other process added it first
                 pass
+
+
+def backup(conn: sqlite3.Connection, keep: int = 7) -> Path | None:
+    """One copy of the library per day in data/backups, keeping the newest `keep`.
+    Returns the new file, or None if today's copy already exists."""
+    import datetime
+
+    config.BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+    target = config.BACKUPS_DIR / f"mago-{datetime.date.today():%Y%m%d}.db"
+    if target.exists():
+        return None
+    partial = target.with_suffix(".partial")
+    copy = sqlite3.connect(str(partial))
+    try:
+        conn.backup(copy)  # a consistent snapshot, even while the worker is writing
+    finally:
+        copy.close()
+    partial.rename(target)
+    for old in sorted(config.BACKUPS_DIR.glob("mago-*.db"))[:-keep]:
+        old.unlink()
+    return target
 
 
 def get_settings(conn: sqlite3.Connection) -> dict[str, str]:

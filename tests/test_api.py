@@ -141,3 +141,35 @@ def test_revision_moves_on_real_changes_only(client):
     library.set_status(conn, video_id, "transcribing", progress=0.5)
     assert read() > after_setting
     conn.close()
+
+
+def test_position_continue_chapters_and_stats(client):
+    source_id, video_id = seed()
+    conn = db.connect()
+    conn.execute("UPDATE videos SET duration_s = 600, chapters = ? WHERE id = ?",
+                 ('[{"start": 0, "title": "Intro"}, {"start": 120, "title": "Trunks"}]', video_id))
+    conn.close()
+    assert client.get("/api/videos", params={"sort": "continue"}).json()["total"] == 0
+    assert client.put(f"/api/videos/{video_id}/position", json={"seconds": 130.5}).status_code == 204
+    page = client.get(f"/api/videos/{video_id}").json()["video"]
+    assert page["position_s"] == 130.5 and [c["title"] for c in page["chapters"]] == ["Intro", "Trunks"]
+    going = client.get("/api/videos", params={"sort": "continue"}).json()
+    assert going["total"] == 1 and going["items"][0]["position_s"] == 130.5
+    client.put(f"/api/videos/{video_id}/position", json={"seconds": 595})  # watched to the end: no longer "continue"
+    assert client.get("/api/videos", params={"sort": "continue"}).json()["total"] == 0
+    assert client.put("/api/videos/999/position", json={"seconds": 1}).status_code == 404
+    numbers = client.get("/api/stats").json()
+    assert numbers["totals"]["videos"] == 1 and numbers["totals"]["words"] == 6 and numbers["totals"]["from_captions"] == 1
+    assert numbers["channels"][0]["done"] == 1 and any(term["term"] == "elephants" for term in numbers["terms"])
+
+
+def test_backup_once_a_day(tmp_path, monkeypatch):
+    from mago import config
+
+    monkeypatch.setattr(config, "BACKUPS_DIR", tmp_path)
+    conn = db.connect()
+    made = db.backup(conn)
+    assert made and made.stat().st_size > 0 and db.backup(conn) is None
+    import sqlite3
+    assert sqlite3.connect(made).execute("SELECT count(*) FROM sources").fetchone()[0] >= 0
+    conn.close()

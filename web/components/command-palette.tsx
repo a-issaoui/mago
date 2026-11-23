@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { ActivityIcon, LibraryIcon, LinkIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunMoonIcon } from "lucide-react";
+import { ActivityIcon, BarChart3Icon, LibraryIcon, LinkIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunMoonIcon } from "lucide-react";
 import { PlatformMark } from "@/components/icons";
 import { useLive } from "@/components/live";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
@@ -63,6 +63,7 @@ export function CommandPalette() {
     { path: "/", label: "Library", keywords: "library home", icon: LibraryIcon },
     { path: "/search", label: "Search", keywords: "search transcripts find", icon: SearchIcon },
     { path: "/activity", label: "Activity", keywords: "activity queue progress downloads", icon: ActivityIcon },
+    { path: "/stats", label: "Statistics", keywords: "statistics stats numbers hours words", icon: BarChart3Icon },
     { path: "/settings", label: "Settings", keywords: "settings preferences whisper", icon: SettingsIcon },
   ].filter((page) => !isLink && matches(`${page.label} ${page.keywords} go`));
   const showStop = !isLink && matches(stopped ? "resume downloads start queue" : "stop all downloads pause queue");

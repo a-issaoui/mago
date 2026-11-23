@@ -175,3 +175,12 @@ def test_passage_search_finds_phrases_across_lines_and_ranks_loosely(conn):
     assert library.search_passages(conn, "trunk giraffes")[0]["match"] == "some words"  # stemmed, any word
     assert library.search_passages(conn, "trunks", published_after="2030-01-01") == []
     assert library.search_passages(conn, "xylophone") == []
+
+
+def test_whisper_hint_carries_the_names():
+    from mago.pipeline import whisper_hint
+
+    hint = whisper_hint({"channel_name": "TikTok", "title": "one TikTok DM sent @Chef Moe to the grocery store",
+                         "description": "#fyp see https://example.com/x for more"})
+    assert "Chef Moe" in hint and "http" not in hint and "#" not in hint and "@" not in hint
+    assert whisper_hint({"title": None, "description": ""}) is None

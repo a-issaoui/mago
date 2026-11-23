@@ -25,6 +25,7 @@ export function VideoCard({ video, showSource = false, eager = false }: { video:
         progress={video.progress}
         eager={eager}
         showPlay
+        watched={video.position_s && video.duration_s ? Math.min(1, video.position_s / video.duration_s) : 0}
       />
       <div className="mt-2 min-w-0">
         <p className={`line-clamp-2 font-medium leading-snug ${video.shape === "tall" ? "text-[12.5px]" : "text-sm"} ${video.status === "done" ? "" : "text-mute"}`}>

@@ -108,7 +108,12 @@ def video_fields(info: dict, platform: str) -> dict:
         tall = info["height"] > info["width"]
     handle = str(info.get("uploader") or "") if platform == "tiktok" else ""
     channel_url = f"https://www.tiktok.com/@{handle}" if handle else (info.get("uploader_url") or info.get("channel_url"))
+    chapters = [
+        {"start": float(c.get("start_time") or 0), "title": str(c.get("title") or "").strip()[:200]}
+        for c in info.get("chapters") or [] if c.get("title")
+    ]
     return {
+        "chapters": json.dumps(chapters, ensure_ascii=False) if len(chapters) > 1 else None,
         "channel_name": info.get("channel") or info.get("uploader"),
         # TikTok's internal id for the profile: listing by it works when listing by @handle doesn't.
         "channel_uid": info.get("channel_id") if platform == "tiktok" else None,

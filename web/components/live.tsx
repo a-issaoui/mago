@@ -26,6 +26,13 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     }
     const fresh = finished.filter((video) => !seen.current!.has(video.id));
     fresh.forEach((video) => seen.current!.add(video.id));
+    if (fresh.length > 0 && document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
+      const waiting = (live.snapshot?.queued ?? 0) + (live.snapshot?.active.length ?? 0);
+      new Notification(waiting === 0 ? "Mago has finished" : "Mago transcribed a video", {
+        body: waiting === 0 ? "Everything in the queue is transcribed." : `${fresh[0].title ?? "A video"}${waiting ? `. ${waiting} to go.` : ""}`,
+        tag: "mago-progress", // one notification that updates, not a pile of them
+      });
+    }
     if (fresh.length === 1) {
       toast.success("Transcribed", {
         description: fresh[0].title ?? "A video",

@@ -27,6 +27,7 @@ function Library() {
   const sources = useApi<Source[]>("/sources", key);
   const recent = useApi<Page>(`/videos?sort=recent&limit=24${filter}`, key);
   const working = useApi<Page>(`/videos?status=working&limit=12${filter}`, key);
+  const going = useApi<Page>(`/videos?sort=continue&limit=12${filter}`, key);
   const SINGLES = 24;
   const [singlesPage, setSinglesPage] = useState(1);
   const singlesTop = useRef<HTMLElement>(null);
@@ -99,6 +100,19 @@ function Library() {
           </h2>
           <Strip label={stopped.length === 2 ? "waiting videos" : "videos in progress"}>
             {working.data.items.map((video) => (
+              <VideoCard key={video.id} video={video} showSource />
+            ))}
+          </Strip>
+        </section>
+      )}
+
+      {going.data && going.data.items.length > 0 && (
+        <section aria-labelledby="continue-heading">
+          <h2 id="continue-heading" className="mb-4 text-lg font-semibold tracking-tight">
+            Continue
+          </h2>
+          <Strip label="videos you started">
+            {going.data.items.map((video) => (
               <VideoCard key={video.id} video={video} showSource />
             ))}
           </Strip>

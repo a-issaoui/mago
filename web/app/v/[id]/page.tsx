@@ -1,9 +1,9 @@
 "use client";
 
-import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { CopyIcon, DownloadIcon, ExternalLinkIcon, LinkIcon, SearchIcon } from "lucide-react";
+import { ALargeSmallIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, LinkIcon, ListIcon, SearchIcon } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { PlatformMark } from "@/components/icons";
@@ -11,7 +11,7 @@ import { useLiveKey } from "@/components/live";
 import { Player, type PlayerHandle } from "@/components/player";
 import { Thumb } from "@/components/thumb";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { useTitle } from "@/hooks/use-title";
 import { act } from "@/lib/act";
@@ -69,6 +69,36 @@ function fullTitle(video: Video): string {
   return stem !== title && video.description?.startsWith(stem) ? video.description : title;
 }
 
+const SIZES = { small: "text-[15px] leading-[1.7]", medium: "text-[17px] leading-[1.75]", large: "text-[20px] leading-[1.8]" } as const;
+const WIDTHS = { narrow: "max-w-[68ch]", full: "" } as const;
+type Reading = { size: keyof typeof SIZES; width: keyof typeof WIDTHS };
+
+/** How the owner likes to read (text size, line length), remembered on this computer. */
+function useReading(): [Reading, (next: Partial<Reading>) => void] {
+  const [reading, setReading] = useState<Reading>({ size: "medium", width: "narrow" });
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("mago-reading") ?? "null");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from this browser's storage after mount
+      if (saved && saved.size in SIZES && saved.width in WIDTHS) setReading(saved);
+    } catch {
+      /* no stored preference */
+    }
+  }, []);
+  const update = useCallback((next: Partial<Reading>) => {
+    setReading((current) => {
+      const merged = { ...current, ...next };
+      try {
+        localStorage.setItem("mago-reading", JSON.stringify(merged));
+      } catch {
+        /* private mode: lasts for this page */
+      }
+      return merged;
+    });
+  }, []);
+  return [reading, update];
+}
+
 const EXPORTS = [
   { format: "txt", label: "Plain text" },
   { format: "md", label: "Markdown, with timestamps" },
@@ -123,9 +153,17 @@ const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, o
 function VideoView() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const start = Math.max(0, Number(useSearchParams().get("t")) || 0);
+  const linked = Math.max(0, Number(useSearchParams().get("t")) || 0);
   const key = useLiveKey(800);
   const { data, error, reload } = useApi<Payload>(`/videos/${id}`, key);
+  // Where to begin: the moment a link points at, else where the owner stopped last time (kept for the life of this page).
+  const [resumeAt, setResumeAt] = useState<number | null>(null);
+  if (data && resumeAt === null) {
+    const saved = data.video.position_s ?? 0;
+    setResumeAt(saved > 5 && saved < (data.video.duration_s ?? Infinity) - 15 ? saved : 0);
+  }
+  const start = linked > 0 ? linked : (resumeAt ?? 0);
+  const [reading, setReadingPref] = useReading();
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
@@ -147,6 +185,23 @@ function VideoView() {
   // The player reports its position several times a second; state changes only when the line does.
   const [played, setPlayed] = useState<number | null>(null);
   const position = useRef(start);
+  const savedAt = useRef(-1);
+  // Remember the place every few seconds, and when the page is left.
+  const savePosition = useCallback(() => {
+    const seconds = Math.floor(position.current);
+    if (seconds === savedAt.current || seconds < 1) return;
+    savedAt.current = seconds;
+    fetch(`/api/videos/${id}/position`, { method: "PUT", keepalive: true, headers: { "x-mago": "1", "content-type": "application/json" }, body: JSON.stringify({ seconds }) }).catch(() => {});
+  }, [id]);
+  useEffect(() => {
+    const timer = setInterval(savePosition, 8000);
+    window.addEventListener("pagehide", savePosition);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("pagehide", savePosition);
+      savePosition();
+    };
+  }, [savePosition]);
   const settleUntil = useRef(0);
   const onTime = useCallback((seconds: number) => {
     // Just after a jump the player still reports where it was; trust the jump until it catches up,
@@ -244,6 +299,18 @@ function VideoView() {
 
   const { video } = data;
   const done = video.status === "done";
+  const chapters = video.chapters ?? [];
+  // The chapter that starts at or before each paragraph, shown as a heading above the first paragraph of it.
+  const headings = new Map<number, string>();
+  if (chapters.length > 1) {
+    let next = 0;
+    for (const paragraph of paragraphs) {
+      while (next < chapters.length && chapters[next].start <= paragraph.lines.at(-1)!.start) {
+        if (!headings.has(paragraph.first)) headings.set(paragraph.first, chapters[next].title);
+        next++;
+      }
+    }
+  }
   const inChannel = video.source_kind !== "video";
   const copy = () => act(() => navigator.clipboard.writeText(paragraphs.map((paragraph) => paragraph.lines.map((line) => line.text).join(" ")).join("\n\n")), "Transcript copied");
   const retry = () => act(() => api(`/videos/${video.id}/retry`, { method: "POST" }), "Queued. It will be transcribed shortly.").then(reload);
@@ -358,6 +425,39 @@ function VideoView() {
                   <CopyIcon />
                   Copy
                 </Button>
+                {chapters.length > 1 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={<Button variant="outline" size="lg" className="h-10 px-4" />}>
+                      <ListIcon />
+                      Chapters
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-[60dvh] w-80 overflow-y-auto">
+                      {chapters.map((chapter) => (
+                        <DropdownMenuItem key={chapter.start} onClick={() => seek(chapter.start)}>
+                          <span className="time w-12 shrink-0 text-xs text-mute">{clock(chapter.start)}</span>
+                          <span className="min-w-0 truncate">{chapter.title}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button variant="outline" size="icon-lg" className="size-10" aria-label="Text size and line width" />}>
+                    <ALargeSmallIcon />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuRadioGroup value={reading.size} onValueChange={(value) => setReadingPref({ size: value as Reading["size"] })}>
+                      <DropdownMenuRadioItem value="small">Small text</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="medium">Medium text</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="large">Large text</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuRadioGroup value={reading.width} onValueChange={(value) => setReadingPref({ width: value as Reading["width"] })}>
+                      <DropdownMenuRadioItem value="narrow">Comfortable line length</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="full">Full width</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <DropdownMenu>
                   <DropdownMenuTrigger render={<Button variant="outline" size="lg" className="h-10 px-4" />}>
                     <DownloadIcon />
@@ -379,6 +479,11 @@ function VideoView() {
                   {video.language ? `, ${video.language}` : ""}
                 </span>
                 {needle && <span aria-live="polite">{matches === 1 ? "1 line matches" : `${matches} lines match`}</span>}
+                {linked === 0 && (resumeAt ?? 0) > 0 && (
+                  <button type="button" onClick={() => seek(0)} className="min-h-6 underline decoration-line underline-offset-4 hover:text-ink">
+                    {`Continuing from ${clock(resumeAt)}. Start over`}
+                  </button>
+                )}
                 <label className="ml-auto flex min-h-6 cursor-pointer items-center gap-2">
                   <Switch size="sm" checked={follow} onCheckedChange={setFollow} />
                   Follow the video
@@ -389,12 +494,21 @@ function VideoView() {
                 <span className="flex items-center gap-1.5"><Kbd>J</Kbd><Kbd>L</Kbd> back or forward 10 s</span>
                 <span className="flex items-center gap-1.5"><Kbd>C</Kbd> copy a link to this moment</span>
               </p>
-              <div ref={list} className="mt-5 font-serif text-[17px] leading-[1.75]">
+              <div ref={list} className={`mt-5 font-serif ${SIZES[reading.size]} ${WIDTHS[reading.width]}`}>
                 {segments.length === 0 && <p className="font-sans text-base text-mute">No speech was found in this video.</p>}
                 {needle && matches === 0 && <p className="font-sans text-base text-mute">{`"${query.trim()}" isn't said in this video.`}</p>}
                 {paragraphs.map((paragraph) =>
                   !needle || paragraph.lines.some((line) => line.text.toLowerCase().includes(needle)) ? (
+                    <Fragment key={paragraph.first}>
+                    {headings.has(paragraph.first) && !needle && (
+                      <h3 className="mb-3 mt-8 flex items-baseline gap-3 font-sans text-base font-semibold first:mt-0">
+                        <span className="h-px flex-1 self-center bg-line" />
+                        {headings.get(paragraph.first)}
+                        <span className="h-px flex-1 self-center bg-line" />
+                      </h3>
+                    )}
                     <ParagraphView key={paragraph.first} paragraph={paragraph} active={active >= paragraph.first && active <= paragraph.last ? active : -1} needle={needle} onSeek={seek} onCopyLink={copyMoment} />
+                    </Fragment>
                   ) : null,
                 )}
               </div>

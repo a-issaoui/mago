@@ -85,6 +85,12 @@ class SettingsBody(BaseModel):
     youtube_delay_s: float | None = Field(default=None, ge=0, le=120)
     youtube_per_hour: int | None = Field(default=None, ge=0, le=2000)
     skip_repeats: Literal["0", "1"] | None = None
+    whisper_for_auto_captions: Literal["0", "1"] | None = None
+    whisper_when_refused: Literal["0", "1"] | None = None
+
+
+class PositionBody(BaseModel):
+    seconds: float = Field(ge=0, le=200_000)
 
 
 class PauseBody(BaseModel):
@@ -223,7 +229,7 @@ def videos(
     conn: sqlite3.Connection = Conn,
     source_id: int | None = None,
     status: Literal["done", "working", "failed", "listed"] | None = None,
-    sort: Literal["newest", "oldest", "views", "longest", "recent"] = "newest",
+    sort: Literal["newest", "oldest", "views", "longest", "recent", "continue"] = "newest",
     platform: Literal["youtube", "tiktok"] | None = None,
     single: bool = False,
     q: str = Query(default="", max_length=200),
@@ -246,13 +252,17 @@ def videos(
     if q.strip():
         where.append("v.title LIKE ? ESCAPE '\\'")
         params.append("%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
-    order = "v.transcribed_at DESC, v.id DESC" if sort == "recent" else _SORTS[sort]
+    order = "v.transcribed_at DESC, v.id DESC" if sort == "recent" else _SORTS.get(sort, "v.id")
     if sort == "recent":
         where.append("v.status = 'done'")
+    if sort == "continue":  # started, not finished: "continue where you left off"
+        where.append("v.id IN (SELECT video_id FROM positions p WHERE p.seconds > 5 AND p.seconds < coalesce(v.duration_s, 1e9) - 15)")
+        order = "(SELECT updated_at FROM positions WHERE video_id = v.id) DESC"
     clause = " AND ".join(where)
     total = conn.execute(f"SELECT count(*) FROM videos v JOIN sources s ON s.id = v.source_id WHERE {clause}", params).fetchone()[0]
     rows = conn.execute(
-        f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title, s.handle AS source_handle FROM videos v "
+        f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title, s.handle AS source_handle, "
+        "(SELECT seconds FROM positions WHERE video_id = v.id) AS position_s FROM videos v "
         f"JOIN sources s ON s.id = v.source_id WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
         (*params, limit, offset),
     )
@@ -279,6 +289,12 @@ def video(video_id: int, conn: sqlite3.Connection = Conn):
     copies = conn.execute(
         "SELECT id, title, platform, duplicate_kind FROM videos WHERE duplicate_of = ? ORDER BY id LIMIT 20", (video_id,)
     ).fetchall()
+    position = conn.execute("SELECT seconds FROM positions WHERE video_id = ?", (video_id,)).fetchone()
+    found["position_s"] = position["seconds"] if position else None
+    try:
+        found["chapters"] = json.loads(found.get("chapters") or "[]")
+    except ValueError:
+        found["chapters"] = []
     return {"video": found, "segments": segments, "channel": channel,
             "original": {"id": original["id"], "title": original["title"], "platform": original["platform"]} if original else None,
             "copies": [dict(row) for row in copies]}
@@ -291,6 +307,51 @@ def video_source(video_id: int, conn: sqlite3.Connection = Conn):
     if row is None:
         raise HTTPException(404, "No such video.")
     return {"source_id": row["source_id"]}
+
+
+@app.put("/api/videos/{video_id}/position", status_code=204)
+def save_position(video_id: int, body: PositionBody, conn: sqlite3.Connection = Conn):
+    """Remember where the owner stopped, to continue there next time."""
+    if conn.execute("SELECT 1 FROM videos WHERE id = ?", (video_id,)).fetchone() is None:
+        raise HTTPException(404, "No such video.")
+    conn.execute(
+        "INSERT INTO positions(video_id, seconds) VALUES (?, ?) ON CONFLICT(video_id) DO UPDATE SET "
+        "seconds = excluded.seconds, updated_at = datetime('now')", (video_id, body.seconds),
+    )
+
+
+_STOP_WORDS = frozenset("""a about after again all also am an and any are as at be because been before being but by can could did do does
+doing don down during each even for from get go going got had has have having he her here hers him his how i if in into is it its just know
+like ll me more most much my no not now of off on once one only or other our out over own re really right s said same say see she so some
+such t than that the their them then there these they thing things think this those through to too under up us ve very was way we well were
+what when where which while who why will with would yeah you your um uh okay oh actually kind lot make made want gonna going people time
+back little something two first new good look need come many these been""".split())
+
+
+@app.get("/api/stats")
+def stats(conn: sqlite3.Connection = Conn):
+    """What the library holds: hours, words, how it was transcribed, per channel, and the words said most."""
+    totals = dict(conn.execute(
+        "SELECT count(*) AS videos, coalesce(sum(duration_s), 0) AS seconds, "
+        "coalesce(sum(method = 'captions'), 0) AS from_captions, coalesce(sum(method = 'whisper'), 0) AS from_whisper, "
+        "coalesce(sum(duplicate_of IS NOT NULL), 0) AS duplicates FROM videos WHERE status = 'done'").fetchone())
+    totals["words"] = conn.execute(
+        "SELECT coalesce(sum(length(text) - length(replace(text, ' ', '')) + 1), 0) FROM segments").fetchone()[0]
+    totals["all_videos"] = conn.execute("SELECT count(*) FROM videos").fetchone()[0]
+    channels = conn.execute(
+        "SELECT s.id, s.title, s.handle, s.platform, s.kind, count(v.id) AS videos, coalesce(sum(v.status = 'done'), 0) AS done, "
+        "coalesce(sum(CASE WHEN v.status = 'done' THEN v.duration_s END), 0) AS seconds, "
+        "(SELECT coalesce(sum(length(g.text) - length(replace(g.text, ' ', '')) + 1), 0) FROM segments g "
+        " JOIN videos v2 ON v2.id = g.video_id WHERE v2.source_id = s.id) AS words "
+        "FROM sources s LEFT JOIN videos v ON v.source_id = s.id WHERE s.kind != 'video' GROUP BY s.id ORDER BY seconds DESC")
+    by_month = conn.execute(
+        "SELECT substr(published_at, 1, 7) AS month, count(*) AS videos FROM videos WHERE status = 'done' AND published_at IS NOT NULL "
+        "GROUP BY 1 ORDER BY 1 DESC LIMIT 24")
+    conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp.segment_terms USING fts5vocab(main, segments_fts, row)")
+    terms = [dict(row) for row in conn.execute("SELECT term, doc AS lines, cnt AS times FROM temp.segment_terms ORDER BY cnt DESC LIMIT 400")
+             if len(row["term"]) > 3 and row["term"] not in _STOP_WORDS and not row["term"].isdigit()][:40]
+    return {"totals": totals, "channels": [dict(row) for row in channels],
+            "by_month": [dict(row) for row in by_month][::-1], "terms": terms}
 
 
 @app.post("/api/videos/{video_id}/retry")

@@ -9,6 +9,7 @@ DB_PATH = DATA_DIR / "mago.db"
 THUMBS_DIR = DATA_DIR / "thumbs"
 AVATARS_DIR = DATA_DIR / "avatars"
 AUDIO_DIR = DATA_DIR / "audio"
+BACKUPS_DIR = DATA_DIR / "backups"
 
 # The another program project shares the single GPU through this flock.
 GPU_LOCK = Path(
@@ -25,6 +26,8 @@ DEFAULT_SETTINGS = {
     # 5-10 s between videos; captions are throttled separately and harder (429 after ~90 quick ones).
     "youtube_delay_s": "6",
     "youtube_per_hour": "250",  # 0 = no hourly budget
+    "whisper_for_auto_captions": "0",  # "1": ignore YouTube's automatic captions (no punctuation) and listen instead
+    "whisper_when_refused": "0",  # "1": when a platform refuses the captions, download the audio and listen instead
     "paused": "",  # platforms the worker must not touch: "", "youtube", "tiktok" or "youtube,tiktok"
     "skip_repeats": "1",  # don't transcribe a re-upload (same channel, same title, same length)
     "resync_hours": "0",  # check channels for new videos this often; 0 = only by hand

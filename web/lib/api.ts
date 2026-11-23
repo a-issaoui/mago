@@ -29,6 +29,8 @@ export type Video = {
   source_title?: string | null;
   source_handle?: string | null;
   source_kind?: string;
+  position_s?: number | null;
+  chapters?: { start: number; title: string }[];
   duplicate_of?: number | null;
   duplicate_kind?: "repeat" | "clip" | null;
   channel_name?: string | null;

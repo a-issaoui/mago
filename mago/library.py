@@ -10,7 +10,7 @@ from . import db, duplicates, fetch
 from .links import Link, detect
 
 _VIDEO_COLUMNS = ("url", "title", "description", "published_at", "duration_s", "view_count", "thumb_url_original", "language")
-_EXTRA_COLUMNS = ("channel_name", "channel_url", "channel_uid")  # known only after the video itself has been read
+_EXTRA_COLUMNS = ("channel_name", "channel_url", "channel_uid", "chapters")  # known only after the video itself has been read
 
 
 def add_source(conn: sqlite3.Connection, raw_url: str, preview: dict | None = None) -> int:

@@ -86,7 +86,8 @@ class Engine:
             return ["cpu"]
         return ["cuda", "cpu"]
 
-    def transcribe(self, audio: Path, language: str | None = None, translate: bool = False, on_progress=None) -> dict:
+    def transcribe(self, audio: Path, language: str | None = None, translate: bool = False, on_progress=None,
+                   hint: str | None = None) -> dict:
         """Returns {"segments", "language", "device"}. A CUDA failure (missing
         library, out of memory) falls back to the CPU for this and later jobs."""
         last_error: Exception | None = None
@@ -96,6 +97,7 @@ class Engine:
                 parts, info = model.transcribe(
                     str(audio), language=language or None, task="translate" if translate else "transcribe",
                     vad_filter=True, condition_on_previous_text=False,
+                    initial_prompt=hint or None,  # names and terms from the title: Whisper then spells them right
                 )
                 segments = []
                 for part in parts:  # lazy: the real work happens while iterating

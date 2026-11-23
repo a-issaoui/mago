@@ -4,7 +4,7 @@ import { useEffect, useId, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { ActivityIcon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
+import { ActivityIcon, BarChart3Icon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
 import { openPalette } from "@/components/command-palette";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
@@ -18,6 +18,7 @@ const links = [
   { href: "/", label: "Library", icon: LibraryIcon },
   { href: "/search", label: "Search", icon: SearchIcon },
   { href: "/activity", label: "Activity", icon: ActivityIcon },
+  { href: "/stats", label: "Statistics", icon: BarChart3Icon },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -233,7 +234,7 @@ export function Topbar() {
 export function MobileNav() {
   const { busy, stopped, isCurrent } = useNavState();
   return (
-    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-night/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl lg:hidden">
+    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-night/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl lg:hidden">
       {links.map(({ href, label, icon: Icon }) => (
         <Link
           key={href}
@@ -241,9 +242,9 @@ export function MobileNav() {
           aria-current={isCurrent(href) ? "page" : undefined}
           className="group relative flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-medium text-mute aria-[current=page]:text-ink"
         >
-          <span className="glow-bg absolute inset-x-8 top-0 hidden h-[3px] rounded-full group-aria-[current=page]:block" />
+          <span className="glow-bg absolute inset-x-5 top-0 hidden h-[3px] rounded-full group-aria-[current=page]:block" />
           <Icon className="size-5 group-aria-[current=page]:text-murex" />
-          {label}
+          {label === "Statistics" ? "Stats" : label}
           {href === "/activity" && busy > 0 && (
             <span className="absolute left-1/2 top-1.5 ml-2">
               <BusyCount count={busy} stopped={stopped} />

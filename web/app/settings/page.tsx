@@ -15,6 +15,7 @@ import { ago, api, mcpLine, useApi } from "@/lib/api";
 type Settings = {
   whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string;
   youtube_delay_s: string; youtube_per_hour: string; skip_repeats: string; resync_hours: string;
+  whisper_for_auto_captions: string; whisper_when_refused: string;
 };
 type System = { ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; alive: boolean; device: string | null; model: string | null };
 
@@ -119,7 +120,7 @@ export default function SettingsPage() {
       <div className="grid items-start gap-x-10 gap-y-4 xl:grid-cols-[200px_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="hidden xl:sticky xl:top-24 xl:block">
         <ul className="space-y-0.5 border-l border-line">
-          {["Transcribing", "Pace", "New videos and repeats", "Claude", "This computer"].map((name) => (
+          {["Transcribing", "Pace", "New videos and repeats", "Notifications", "Claude", "This computer"].map((name) => (
             <li key={name}>
               <a href={`#${name.toLowerCase().replace(/\W+/g, "-")}`} className="-ml-px block border-l-2 border-transparent py-1.5 pl-4 text-sm text-mute hover:border-murex hover:text-ink">
                 {name}
@@ -152,6 +153,12 @@ export default function SettingsPage() {
             <Field label="Translate to English" hint="Whisper writes English whatever is spoken. Captions are skipped, so every video is transcribed here.">
               <Switch aria-label="Translate to English" checked={values.translate === "1"} onCheckedChange={(checked) => save({ translate: checked ? "1" : "0" })} />
             </Field>
+            <Field label="Listen instead of using automatic captions" hint="YouTube's automatic captions have no punctuation. Whisper reads better but takes far longer on long videos. Captions written by the channel are still used.">
+              <Switch aria-label="Listen instead of using automatic captions" checked={values.whisper_for_auto_captions === "1"} onCheckedChange={(checked) => save({ whisper_for_auto_captions: checked ? "1" : "0" })} />
+            </Field>
+            <Field label="Listen when captions are refused" hint="When YouTube refuses the captions (too many requests), download the audio and transcribe it here instead of waiting.">
+              <Switch aria-label="Listen when captions are refused" checked={values.whisper_when_refused === "1"} onCheckedChange={(checked) => save({ whisper_when_refused: checked ? "1" : "0" })} />
+            </Field>
           </Group>
 
           <Group title="Pace" note="Both platforms refuse requests that come too fast. When one does, Mago pauses that platform and resumes by itself.">
@@ -170,6 +177,26 @@ export default function SettingsPage() {
             </Field>
             <Field label="Skip re-uploads" hint="A video with the same title and length as an earlier one in the same channel is listed but not transcribed again.">
               <Switch aria-label="Skip re-uploads" checked={values.skip_repeats === "1"} onCheckedChange={(checked) => save({ skip_repeats: checked ? "1" : "0" })} />
+            </Field>
+          </Group>
+
+          <Group title="Notifications" note="Mago always shows a small message inside the page when a video finishes. Desktop notifications also reach you when this tab is in the background.">
+            <Field label="Desktop notifications" hint="Your browser will ask for permission once.">
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-10 px-5"
+                onClick={async () => {
+                  if (typeof Notification === "undefined") return void toast.error("This browser has no desktop notifications.");
+                  const answer = await Notification.requestPermission();
+                  if (answer === "granted") {
+                    toast.success("Desktop notifications are on");
+                    new Notification("Mago", { body: "You will be told here when videos finish.", tag: "mago-progress" });
+                  } else toast.info("Notifications are blocked for this site in your browser's settings.");
+                }}
+              >
+                Turn on
+              </Button>
             </Field>
           </Group>
 

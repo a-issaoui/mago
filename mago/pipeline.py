@@ -7,6 +7,19 @@ from . import config, db, fetch, library
 from .whisper_engine import Engine
 
 
+def whisper_hint(video: dict) -> str | None:
+    """A short line of context for Whisper: the channel and title carry the names and terms it
+    would otherwise guess at (it wrote "Chef Mo" for a video titled "... @Chef Moe ...")."""
+    import re
+
+    parts = [video.get("channel_name") or video.get("source_title") or "", video.get("title") or "", (video.get("description") or "")[:300]]
+    text = " ".join(part.strip() for part in parts if part and part.strip())
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(r"[#@](\w+)", r"\1", text)  # "#fyp @Chef Moe" → "fyp Chef Moe"
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:400] or None
+
+
 def process_video(conn: sqlite3.Connection, video_id: int, engine: Engine, audio_dir: Path | None = None) -> dict:
     """Runs the whole flow for one video and records the result on its row.
     Returns {"status", "method", "segments", "device"}.
@@ -24,7 +37,14 @@ def process_video(conn: sqlite3.Connection, video_id: int, engine: Engine, audio
         with fetch.VideoSession(video["url"], video["platform"], audio_dir) as session:
             library.set_status(conn, video_id, "captions")
             library.update_video(conn, video_id, session.load())
-            found = None if settings["translate"] == "1" else session.captions(settings["language"])
+            try:
+                found = None if settings["translate"] == "1" else session.captions(settings["language"])
+            except fetch.RateLimited:
+                if settings["whisper_when_refused"] != "1":
+                    raise
+                found = None  # the captions were refused: listen to the audio instead
+            if found and found["auto"] and settings["whisper_for_auto_captions"] == "1":
+                found = None  # automatic captions have no punctuation; the owner prefers Whisper
             if found:
                 library.save_transcript(conn, video_id, found["segments"], "captions", found["language"])
                 return {"status": "done", "method": "captions", "segments": len(found["segments"]), "device": None}
@@ -38,7 +58,9 @@ def process_video(conn: sqlite3.Connection, video_id: int, engine: Engine, audio
                 last_shown[0] = fraction
                 conn.execute("UPDATE videos SET progress = ? WHERE id = ?", (round(fraction, 3), video_id))
 
-        result = engine.transcribe(audio, settings["language"] or None, settings["translate"] == "1", on_progress)
+        video = library.get_video(conn, video_id) or video  # now with the title and channel filled in
+        result = engine.transcribe(audio, settings["language"] or None, settings["translate"] == "1", on_progress,
+                                   hint=whisper_hint(video))
         library.save_transcript(conn, video_id, result["segments"], "whisper", result["language"])
         return {"status": "done", "method": "whisper", "segments": len(result["segments"]), "device": result["device"]}
     except fetch.Unavailable as error:

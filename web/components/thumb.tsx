@@ -15,12 +15,13 @@ type Props = {
   size?: "sm" | "lg";
   eager?: boolean;
   showPlay?: boolean;
+  watched?: number; // 0 to 1: how far the owner got
   className?: string;
 };
 
 /** A thumbnail frame in the video's own shape. The blurred placeholder holds
  *  the space, so nothing jumps when the picture arrives. */
-export function Thumb({ path, blur, shape, platform, duration, status, progress = 0, size = "sm", eager, showPlay, className = "" }: Props) {
+export function Thumb({ path, blur, shape, platform, duration, status, progress = 0, size = "sm", eager, showPlay, watched = 0, className = "" }: Props) {
   const [loaded, setLoaded] = useState(false);
   const src = thumbUrl(path, size);
   const waiting = status === "queued" || status === "listed";
@@ -55,6 +56,11 @@ export function Thumb({ path, blur, shape, platform, duration, status, progress 
       {duration != null && duration > 0 && (
         <span className="time absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white">
           {clock(duration)}
+        </span>
+      )}
+      {watched > 0.01 && !working && (
+        <span className="absolute inset-x-0 bottom-0 h-1 bg-black/50" role="img" aria-label={`${Math.round(watched * 100)}% watched`}>
+          <span className="glow-bg block h-full" style={{ width: `${watched * 100}%` }} />
         </span>
       )}
       {working && <ProgressRing progress={status === "transcribing" ? progress : null} />}

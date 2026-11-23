@@ -162,6 +162,12 @@ class Worker:
                     hours = float(db.get_settings(self.conn)["resync_hours"])
                 except ValueError:
                     hours = 0.0
+                try:
+                    made = db.backup(self.conn)
+                    if made:
+                        log.info("backup written: %s", made.name)
+                except Exception:  # noqa: BLE001 - a failed backup must not stop transcribing
+                    log.exception("backup failed")
                 queued = jobs.enqueue_due_resyncs(self.conn, hours)
                 if queued:
                     log.info("scheduled re-sync: %d channels queued", queued)
