@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { PlatformMark } from "@/components/icons";
 import { api, clock, kindLabel, type Preview, type Source } from "@/lib/api";
 
@@ -17,7 +19,8 @@ const looksLikeLink = (text: string) => /(youtube\.com|youtu\.be|tiktok\.com)\//
  *  into a preview card; nothing starts until the button is pressed. */
 export function PasteBox({ onAdded }: { onAdded?: () => void }) {
   const router = useRouter();
-  const [value, setValue] = useState("");
+  const params = useSearchParams();
+  const [value, setValue] = useState(() => params.get("add") ?? "");
   const [fetched, setFetched] = useState<{ text: string; preview?: Preview; message?: string } | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -60,6 +63,7 @@ export function PasteBox({ onAdded }: { onAdded?: () => void }) {
       const source = await api<Source>("/sources", { method: "POST", body: JSON.stringify({ url: preview.url }) });
       setValue("");
       onAdded?.();
+      toast.success(source.kind === "video" ? "Added. It is being transcribed." : "Added. Listing its videos now.");
       if (source.kind !== "video") router.push(`/c/${source.id}`);
     } catch (error) {
       setFetched({ text, message: error instanceof Error ? error.message : "Couldn't add that link." });
@@ -70,7 +74,7 @@ export function PasteBox({ onAdded }: { onAdded?: () => void }) {
 
   const open = state.step !== "idle";
   return (
-    <div className={`rounded-[22px] border bg-surface transition-colors ${open ? "border-murex/60" : "border-line"} focus-within:border-murex`}>
+    <div className={`rounded-[22px] border bg-surface shadow-sm transition-[border-color,box-shadow] ${open ? "border-murex/60" : "border-line"} focus-within:border-murex focus-within:ring-4 focus-within:ring-murex/15`}>
       <label htmlFor="paste" className="sr-only">
         YouTube or TikTok link
       </label>
@@ -83,7 +87,7 @@ export function PasteBox({ onAdded }: { onAdded?: () => void }) {
         value={value}
         onChange={(event) => setValue(event.target.value)}
         placeholder="Paste a YouTube or TikTok link"
-        className="h-16 w-full rounded-[22px] bg-transparent px-5 text-lg outline-none placeholder:text-mute sm:h-[72px] sm:px-7 sm:text-xl"
+        className="h-14 w-full rounded-[22px] bg-transparent px-5 text-lg outline-none placeholder:text-mute sm:h-16 sm:px-6"
       />
       <div aria-live="polite">
         {state.step === "checking" && (
@@ -140,13 +144,13 @@ function PreviewCard({ preview, adding, onAdd, onUseChannel }: { preview: Previe
         </div>
       </div>
       {existing ? (
-        <button type="button" onClick={() => router.push(isVideo ? `/v/${existing}` : `/c/${existing}`)} className="h-11 shrink-0 rounded-full border border-line px-5 text-sm font-semibold hover:bg-raised">
+        <Button variant="outline" size="lg" className="h-11 shrink-0 px-5" onClick={() => router.push(isVideo ? `/v/${existing}` : `/c/${existing}`)}>
           Already in your library. Open it
-        </button>
+        </Button>
       ) : (
-        <button type="button" onClick={onAdd} disabled={adding} className="h-11 shrink-0 rounded-full bg-murex px-6 text-sm font-semibold text-on-murex hover:brightness-110 disabled:opacity-60">
-          {adding ? "Adding" : isVideo ? "Transcribe this video" : `Transcribe this ${preview.kind}`}
-        </button>
+        <Button size="lg" className="h-11 shrink-0 px-6 font-semibold" onClick={onAdd} disabled={adding}>
+          {adding ? "Adding" : isVideo ? "Transcribe this video" : `Transcribe all ${preview.video_count ? `${preview.video_count} videos` : `of this ${preview.kind}`}`}
+        </Button>
       )}
     </div>
   );

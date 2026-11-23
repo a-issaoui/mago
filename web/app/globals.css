@@ -1,59 +1,67 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-/* Mago's palette: aubergine night and Tyrian (murex) purple. Light is a cool lilac paper. */
+@custom-variant dark (&:is(.dark *));
+
+/* Mago's palette: aubergine night and Tyrian (murex) purple. Light is a cool lilac paper.
+   The second block maps it onto the names shadcn/ui components expect. */
 :root {
   --night: #f3f0f5;
   --surface: #ffffff;
   --raised: #e9e4ee;
   --line: #d9d1e0;
   --ink: #1e1826;
-  --mute: #6a5d76;
+  --mute: #64576f;
   --murex: #8e1558;
   --murex-soft: #8e155814;
   --on-murex: #ffffff;
-  --sea: #1f7a69;
-  --amber: #9a5b08;
+  --sea: #17705f;
+  --amber: #8f5206;
+  --danger: #b3261e;
   --mark: #f6c9e0;
   --youtube: #e0002a;
   color-scheme: light;
+
+  --background: var(--night);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--murex);
+  --primary-foreground: var(--on-murex);
+  --secondary: var(--raised);
+  --secondary-foreground: var(--ink);
+  --muted: var(--raised);
+  --muted-foreground: var(--mute);
+  --accent: var(--raised);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--murex);
+  --radius: 0.75rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --night: #17131c;
-    --surface: #211b28;
-    --raised: #2b2334;
-    --line: #382e43;
-    --ink: #ede6f0;
-    --mute: #a497ae;
-    --murex: #e0589c;
-    --murex-soft: #e0589c1f;
-    --on-murex: #1a0b14;
-    --sea: #6fc3b2;
-    --amber: #e0a458;
-    --mark: #6b1f4a;
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
+.dark {
   --night: #17131c;
   --surface: #211b28;
   --raised: #2b2334;
-  --line: #382e43;
+  --line: #3a3046;
   --ink: #ede6f0;
-  --mute: #a497ae;
+  --mute: #a99cb3;
   --murex: #e0589c;
   --murex-soft: #e0589c1f;
   --on-murex: #1a0b14;
   --sea: #6fc3b2;
   --amber: #e0a458;
+  --danger: #ff8f85;
   --mark: #6b1f4a;
   color-scheme: dark;
 }
 
 @theme inline {
-  --color-youtube: var(--youtube);
   --color-night: var(--night);
   --color-surface: var(--surface);
   --color-raised: var(--raised);
@@ -65,28 +73,62 @@
   --color-on-murex: var(--on-murex);
   --color-sea: var(--sea);
   --color-amber: var(--amber);
+  --color-youtube: var(--youtube);
   --font-sans: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-speech), ui-serif, Georgia, serif;
+  --font-heading: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 @layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
   html {
     background: var(--night);
     color: var(--ink);
     -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 5rem;
   }
 
   body {
-    font-family: var(--font-sans);
+    @apply bg-background font-sans text-foreground antialiased;
     font-size: 15px;
     line-height: 1.5;
     min-height: 100dvh;
   }
 
-  :focus-visible {
+  /* One focus style everywhere that a component doesn't bring its own. */
+  :where(a, button, [role="button"], summary, [tabindex]):focus-visible {
     outline: 2px solid var(--murex);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: 6px;
   }
 
   mark {
@@ -94,6 +136,19 @@
     color: inherit;
     border-radius: 3px;
     padding: 0 2px;
+  }
+
+  /* Under 16px, iOS zooms the page when a field is focused. */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  ::selection {
+    background: var(--mark);
   }
 }
 
@@ -144,6 +199,13 @@
 }
 .strip > * {
   scroll-snap-align: start;
+}
+/* A soft fade on the right edge says "there is more this way". */
+@media (min-width: 641px) {
+  .strip {
+    mask-image: linear-gradient(to right, #000 calc(100% - 72px), transparent);
+    padding-right: 72px;
+  }
 }
 .strip > .wide {
   grid-column: span 3;

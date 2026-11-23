@@ -4,7 +4,7 @@ type Props = { done: number; working: number; failed: number; total: number; cla
 export function Progress({ done, working, failed, total, className = "h-1.5", label = "Transcribed" }: Props) {
   const share = (count: number) => `${total > 0 ? (count / total) * 100 : 0}%`;
   return (
-    <div className={`progress ${className}`} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+    <div className={`progress ${className}`} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-valuetext={`${done} of ${total}`}>
       <span className="bg-sea" style={{ width: share(done) }} />
       <span className="bg-murex" style={{ width: share(working) }} />
       <span className="bg-amber" style={{ width: share(failed) }} />
@@ -12,10 +12,10 @@ export function Progress({ done, working, failed, total, className = "h-1.5", la
   );
 }
 
-export function Legend({ done, working, failed }: { done: number; working: number; failed: number }) {
+export function Legend({ done, working, failed, paused = false }: { done: number; working: number; failed: number; paused?: boolean }) {
   const items = [
     { count: done, label: "transcribed", color: "bg-sea" },
-    { count: working, label: "in progress", color: "bg-murex" },
+    { count: working, label: paused ? "waiting, downloads stopped" : "in progress or waiting", color: "bg-murex" },
     { count: failed, label: "failed or unavailable", color: "bg-amber" },
   ].filter((item) => item.count > 0);
   return (

@@ -1,14 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { PauseIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
 import { Legend, Progress } from "@/components/progress";
 import { Thumb } from "@/components/thumb";
+import { Button } from "@/components/ui/button";
+import { useTitle } from "@/hooks/use-title";
+import { act } from "@/lib/act";
 import { api, platformName, roughDuration, statusLabel, useApi, type Activity, type Platform, type Video } from "@/lib/api";
 
-/** "resumes in 12 min", counting down without waiting for the server. */
+/** "resumes in 12 minutes", counting down without waiting for the server. */
 function useNow(): number {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
@@ -44,92 +48,113 @@ function Row({ video, children }: { video: Video; children?: React.ReactNode }) 
   );
 }
 
+function Section({ id, title, count, action, children }: { id: string; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="mt-10" aria-labelledby={id}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id={id} className="text-xl font-semibold">
+          {title} {count != null && <span className="tabular font-normal text-mute">{count}</span>}
+        </h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export default function ActivityPage() {
+  useTitle("Activity");
   const { snapshot, connected } = useLive();
   const key = useLiveKey(1200);
   const { data, error, reload } = useApi<Activity>("/activity", key);
+  const now = useNow();
   const active = snapshot?.active ?? data?.active ?? [];
+  const listing = snapshot?.listing ?? data?.listing ?? [];
   const worker = snapshot?.worker ?? data?.worker;
   const failed = data?.failed.filter((video) => video.status === "failed") ?? [];
   const skipped = data?.failed.filter((video) => video.status === "skipped") ?? [];
   const queued = snapshot?.queued ?? data?.queued ?? 0;
-  const idle = active.length === 0 && queued === 0 && (snapshot?.listing.length ?? 0) === 0;
-  const now = useNow();
   const platforms = snapshot?.platforms ?? data?.platforms;
+  const stopped = snapshot?.paused ?? data?.paused ?? [];
   const pauses = (snapshot?.pauses ?? data?.pauses ?? []).filter((pause) => pause.until > now);
   const names: Platform[] = ["youtube", "tiktok"];
-  const stopped = snapshot?.paused ?? data?.paused ?? [];
-  async function setPaused(platform: Platform | "all", paused: boolean) {
-    await api("/queue/pause", { method: "POST", body: JSON.stringify({ platform, paused }) });
-    reload();
-  }
-  const total = platforms ? names.reduce((sum, name) => sum + platforms[name].total, 0) : 0;
-  const sum = (field: "done" | "working" | "failed") => (platforms ? names.reduce((value, name) => value + platforms[name][field], 0) : 0);
+  const sum = (field: "done" | "working" | "failed" | "total") => (platforms ? names.reduce((value, name) => value + platforms[name][field], 0) : 0);
+  const total = sum("total");
+  const idle = active.length === 0 && queued === 0 && listing.length === 0;
+  const allStopped = stopped.length === 2;
 
-  async function retry(id: number) {
-    await api(`/videos/${id}/retry`, { method: "POST" });
-    reload();
-  }
-  async function retryAll() {
-    await api("/retry-failed", { method: "POST" });
-    reload();
-  }
+  const setPaused = (platform: Platform | "all", paused: boolean) =>
+    act(
+      () => api("/queue/pause", { method: "POST", body: JSON.stringify({ platform, paused }) }),
+      paused ? `${platform === "all" ? "All downloads" : platformName(platform)} stopped` : `${platform === "all" ? "Downloads" : platformName(platform)} resumed`,
+    ).then(reload);
+  const retry = (id: number) => act(() => api(`/videos/${id}/retry`, { method: "POST" }), "Queued again").then(reload);
 
   const engine = !worker
     ? ""
     : !worker.alive
-      ? "The worker isn't running, so nothing in the queue will move."
+      ? "The worker isn't running, so nothing in the queue will move. Start it with bin/mago start worker."
       : worker.device
-        ? `Whisper ${worker.model ?? ""} is running on the ${worker.device === "cuda" ? "graphics card" : "processor (slower)"}.`
+        ? `Whisper ${worker.model ?? ""} runs on the ${worker.device === "cuda" ? "graphics card" : "processor (slower)"}.`
         : "The worker is running. Whisper loads when a video needs it.";
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="display text-4xl sm:text-6xl">Activity</h1>
-      <p className="mt-3 flex items-center gap-2 text-sm text-mute">
-        {worker && <span className={`size-2 rounded-full ${worker.alive ? "bg-sea" : "bg-amber"}`} />}
-        {engine}
-        {!connected && snapshot && " Live updates are reconnecting."}
+      <h1 className="display text-[34px] sm:text-[44px]">Activity</h1>
+      <p className="mt-2 flex items-start gap-2 text-sm text-mute">
+        {worker && <span className={`mt-1.5 size-2 shrink-0 rounded-full ${worker.alive ? "bg-sea" : "bg-amber"}`} />}
+        <span>
+          {engine}
+          {!connected && snapshot && " Live updates are reconnecting."}
+        </span>
       </p>
-      {error && <p className="mt-4 text-amber">{error}</p>}
+      {error && !data && <p className="mt-4 text-amber">{error}</p>}
 
       {platforms && total > 0 && (
-        <section aria-label="Overall progress" className="mt-7 rounded-2xl border border-line bg-surface p-5">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <p className="tabular text-lg font-semibold">{`${sum("done")} of ${total} videos transcribed`}</p>
-            {data && data.eta_s > 0 && sum("working") > 0 && stopped.length === 0 && <p className="text-sm text-mute">{`${roughDuration(data.eta_s)} left at the current pace`}</p>}
+        <section aria-label="Overall progress" className="mt-7 rounded-3xl border border-line bg-surface p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+            <div>
+              <p className="tabular text-xl font-semibold">{`${sum("done")} of ${total} videos transcribed`}</p>
+              <p className="mt-0.5 text-sm text-mute">
+                {sum("working") === 0
+                  ? "Everything in your library has been processed."
+                  : allStopped
+                    ? "Downloads are stopped."
+                    : data && data.eta_s > 0
+                      ? `${roughDuration(data.eta_s)} left at the current pace.`
+                      : "Working through the queue."}
+              </p>
+            </div>
             {sum("working") > 0 && (
-              <button
-                type="button"
-                onClick={() => setPaused("all", stopped.length < 2)}
-                className={`h-9 rounded-full px-4 text-sm font-semibold ${stopped.length === 2 ? "bg-murex text-on-murex hover:brightness-110" : "border border-line hover:bg-raised"}`}
-              >
-                {stopped.length === 2 ? "Resume downloads" : "Stop all downloads"}
-              </button>
+              <Button size="lg" variant={allStopped ? "default" : "outline"} className="h-10 px-5 font-semibold" onClick={() => setPaused("all", !allStopped)}>
+                {allStopped ? <PlayIcon /> : <PauseIcon />}
+                {allStopped ? "Resume downloads" : "Stop all downloads"}
+              </Button>
             )}
           </div>
-          <Progress done={sum("done")} working={sum("working")} failed={sum("failed")} total={total} className="mt-3 h-2.5" />
+          <Progress done={sum("done")} working={sum("working")} failed={sum("failed")} total={total} className="mt-4 h-2.5" />
           <div className="mt-3">
-            <Legend done={sum("done")} working={sum("working")} failed={sum("failed")} />
+            <Legend done={sum("done")} working={sum("working")} failed={sum("failed")} paused={allStopped} />
           </div>
-          <div className="mt-5 grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
+          <div className="mt-5 grid gap-x-6 gap-y-5 border-t border-line pt-5 sm:grid-cols-2">
             {names.filter((name) => platforms[name].total > 0).map((name) => {
               const pause = pauses.find((item) => item.platform === name);
+              const isStopped = stopped.includes(name);
               return (
                 <div key={name}>
-                  <p className="tabular flex items-center gap-2 text-sm font-semibold">
+                  <div className="tabular flex min-h-8 items-center gap-2 text-sm font-semibold">
                     <PlatformMark platform={name} className="size-[18px]" />
                     {platformName(name)}
                     <span className="ml-auto font-normal text-mute">{`${platforms[name].done} of ${platforms[name].total}`}</span>
                     {platforms[name].working > 0 && (
-                      <button type="button" onClick={() => setPaused(name, !stopped.includes(name))} className="rounded-full border border-line px-2.5 py-0.5 text-xs font-semibold hover:bg-raised">
-                        {stopped.includes(name) ? "Resume" : "Stop"}
-                      </button>
+                      <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setPaused(name, !isStopped)}>
+                        {isStopped ? "Resume" : "Stop"}
+                      </Button>
                     )}
-                  </p>
+                  </div>
                   <Progress {...platforms[name]} className="mt-2 h-1.5" label={`${platformName(name)} transcribed`} />
-                  {stopped.includes(name) && <p className="mt-2 text-xs text-amber">{`Stopped by you. Nothing is downloaded from ${platformName(name)} until you resume.`}</p>}
-                  {pause && !stopped.includes(name) && (
+                  {isStopped && platforms[name].working > 0 && <p className="mt-2 text-xs text-amber">{`Stopped by you. Nothing is downloaded from ${platformName(name)} until you resume.`}</p>}
+                  {pause && !isStopped && (
                     <p className="mt-2 text-xs text-amber">
                       {pause.reason === "budget"
                         ? `Paused: this hour's YouTube limit is used up. Resumes in ${wait(pause.until - now)}.`
@@ -143,18 +168,19 @@ export default function ActivityPage() {
         </section>
       )}
 
-      <section className="mt-9" aria-labelledby="now-heading">
-        <h2 id="now-heading" className="text-xl font-semibold">
-          Now
-        </h2>
+      <Section id="now-heading" title="Now">
         {idle && <p className="mt-2 text-mute">Nothing is running. Paste a link in the library to add videos.</p>}
-        {!idle && active.length === 0 && (snapshot?.listing.length ?? 0) === 0 && (
+        {!idle && active.length === 0 && listing.length === 0 && (
           <p className="mt-2 text-mute">
-            {stopped.length > 0 ? "Stopped. Press Resume above to carry on." : pauses.length > 0 ? "Waiting. The platforms with videos left are paused; see above for when they resume." : "Waiting a few seconds before the next video."}
+            {stopped.length > 0 && pauses.length + stopped.length >= names.filter((name) => platforms?.[name].working).length
+              ? "Stopped. Press Resume above to carry on."
+              : pauses.length > 0
+                ? "Waiting. The platforms with videos left are paused; see above for when they resume."
+                : "Waiting a few seconds before the next video."}
           </p>
         )}
         <ul className="divide-y divide-line">
-          {snapshot?.listing.map((source) => (
+          {listing.map((source) => (
             <li key={`list-${source.id}`} className="flex items-center gap-3 py-3">
               <span className="live-dot size-2 shrink-0 rounded-full bg-murex" />
               <Link href={`/c/${source.id}`} className="min-w-0 truncate font-medium hover:underline">
@@ -165,7 +191,15 @@ export default function ActivityPage() {
           {active.map((video) => (
             <Row key={video.id} video={video}>
               <div className="mt-2 flex items-center gap-3">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(video.progress * 100)}>
+                <div
+                  className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised"
+                  role="progressbar"
+                  aria-label={video.title ?? "Video"}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(video.progress * 100)}
+                  aria-valuetext={statusLabel(video)}
+                >
                   <div
                     className={`h-full origin-left rounded-full bg-murex transition-transform duration-700 ${video.status === "transcribing" ? "" : "live-dot"}`}
                     style={{ transform: `scaleX(${video.status === "transcribing" ? Math.max(video.progress, 0.02) : 1})` }}
@@ -176,13 +210,10 @@ export default function ActivityPage() {
             </Row>
           ))}
         </ul>
-      </section>
+      </Section>
 
       {queued > 0 && (
-        <section className="mt-9" aria-labelledby="next-heading">
-          <h2 id="next-heading" className="text-xl font-semibold">
-            Up next <span className="tabular font-normal text-mute">{queued}</span>
-          </h2>
+        <Section id="next-heading" title="Up next" count={queued}>
           <ul className="divide-y divide-line">
             {data?.up_next.map((video) => (
               <Row key={video.id} video={video}>
@@ -191,64 +222,60 @@ export default function ActivityPage() {
             ))}
           </ul>
           {data && queued > data.up_next.length && <p className="tabular mt-2 text-sm text-mute">{`and ${queued - data.up_next.length} more`}</p>}
-        </section>
+        </Section>
       )}
 
       {failed.length > 0 && (
-        <section className="mt-9" aria-labelledby="failed-heading">
-          <div className="flex items-center justify-between">
-            <h2 id="failed-heading" className="text-xl font-semibold">
-              Failed <span className="tabular font-normal text-mute">{failed.length}</span>
-            </h2>
-            <button type="button" onClick={retryAll} className="h-9 rounded-full border border-line px-4 text-sm font-semibold hover:bg-raised">
+        <Section
+          id="failed-heading"
+          title="Failed"
+          count={failed.length}
+          action={
+            <Button variant="outline" className="h-9 px-4" onClick={() => act(() => api<{ queued: number }>("/retry-failed", { method: "POST" }), (result) => `${result.queued} videos queued again`).then(reload)}>
+              <RotateCcwIcon />
               Try all again
-            </button>
-          </div>
+            </Button>
+          }
+        >
           <ul className="divide-y divide-line">
             {failed.map((video) => (
               <Row key={video.id} video={video}>
                 <div className="mt-1 flex items-start justify-between gap-3">
                   <p className="line-clamp-2 text-xs text-amber">{video.error}</p>
-                  <button type="button" onClick={() => retry(video.id)} className="h-8 shrink-0 rounded-full bg-murex px-4 text-xs font-semibold text-on-murex hover:brightness-110">
+                  <Button size="sm" className="h-8 shrink-0 px-3.5" onClick={() => retry(video.id)}>
                     Try again
-                  </button>
+                  </Button>
                 </div>
               </Row>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
 
       {data && data.failed_sources.length > 0 && (
-        <section className="mt-9" aria-labelledby="links-heading">
-          <h2 id="links-heading" className="text-xl font-semibold">
-            Links that couldn&apos;t be read <span className="tabular font-normal text-mute">{data.failed_sources.length}</span>
-          </h2>
+        <Section id="links-heading" title="Links that couldn't be read" count={data.failed_sources.length}>
           <ul className="divide-y divide-line">
             {data.failed_sources.map((source) => (
               <li key={source.id} className="py-3">
                 <p className="truncate font-medium">{source.title || source.handle || source.url}</p>
                 <p className="mt-0.5 line-clamp-2 text-xs text-amber">{source.error}</p>
                 <div className="mt-2 flex gap-2">
-                  <button type="button" onClick={() => api(`/sources/${source.id}/sync`, { method: "POST" }).then(reload)} className="h-8 rounded-full bg-murex px-4 text-xs font-semibold text-on-murex hover:brightness-110">
+                  <Button size="sm" className="h-8 px-3.5" onClick={() => act(() => api(`/sources/${source.id}/sync`, { method: "POST" }), "Trying that link again").then(reload)}>
                     Try again
-                  </button>
-                  <button type="button" onClick={() => api(`/sources/${source.id}`, { method: "DELETE" }).then(reload)} className="h-8 rounded-full border border-line px-4 text-xs font-semibold hover:bg-raised">
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-8 px-3.5" onClick={() => act(() => api(`/sources/${source.id}`, { method: "DELETE" }), "Link removed").then(reload)}>
                     Remove
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
 
       {skipped.length > 0 && (
-        <section className="mt-9" aria-labelledby="skipped-heading">
-          <h2 id="skipped-heading" className="text-xl font-semibold">
-            Unavailable <span className="tabular font-normal text-mute">{skipped.length}</span>
-          </h2>
-          <p className="mt-1 text-sm text-mute">{"Private, removed or blocked videos. Mago doesn't keep retrying these."}</p>
+        <Section id="skipped-heading" title="Left out" count={skipped.length}>
+          <p className="mt-1 text-sm text-mute">Private, removed or blocked videos, and repeats of an earlier upload. Mago doesn&apos;t keep retrying these.</p>
           <ul className="divide-y divide-line">
             {skipped.map((video) => (
               <Row key={video.id} video={video}>
@@ -256,7 +283,7 @@ export default function ActivityPage() {
               </Row>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
     </div>
   );

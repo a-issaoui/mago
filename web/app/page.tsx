@@ -5,19 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
 import { PasteBox } from "@/components/paste-box";
+import { Pills } from "@/components/pills";
 import { SourceCard } from "@/components/source-card";
 import { Sheet, VideoCard } from "@/components/video-card";
+import { useTitle } from "@/hooks/use-title";
 import { useApi, type Platform, type Source, type Video } from "@/lib/api";
 
 type Page = { total: number; items: Video[] };
 
-const FILTERS: { value: Platform | ""; label: string }[] = [
-  { value: "", label: "Everything" },
-  { value: "youtube", label: "YouTube" },
-  { value: "tiktok", label: "TikTok" },
-];
-
 function Library() {
+  useTitle("Library");
   const router = useRouter();
   const params = useSearchParams();
   const platform = (params.get("platform") ?? "") as Platform | "";
@@ -31,6 +28,7 @@ function Library() {
 
   const channels = sources.data?.filter((source) => source.kind !== "video" && (!platform || source.platform === platform)) ?? [];
   const empty = sources.data?.length === 0;
+  const stopped = snapshot?.paused ?? [];
   const refresh = () => {
     sources.reload();
     working.reload();
@@ -40,43 +38,51 @@ function Library() {
   const singleIds = new Set(singles.data?.items.map((video) => video.id));
   const recentIsRepeat = Boolean(recent.data && singles.data && recent.data.items.every((video) => singleIds.has(video.id)));
   const nothingHere = !empty && sources.data && channels.length === 0 && singles.data?.total === 0;
+  // The big headline is for the first visit; once there is a library, the library is the page.
+  const firstVisit = empty || (!sources.data && !sources.error);
 
   return (
     <div className="space-y-12 sm:space-y-14">
-      <section className="max-w-3xl pt-2 sm:pt-6">
-        <h1 className="display text-[44px] sm:text-[72px]">Keep what was said</h1>
-        <p className="mb-6 mt-3 max-w-xl text-base text-mute sm:text-lg">
-          Paste one video or a whole channel. Mago saves the words with their timestamps, so you can search them and read along.
-        </p>
+      <section className={`max-w-3xl ${firstVisit ? "pt-2 sm:pt-10" : "pt-0"}`}>
+        {firstVisit ? (
+          <>
+            <h1 className="display text-[44px] sm:text-[76px]">Keep what was said</h1>
+            <p className="mb-7 mt-4 max-w-xl text-base text-mute sm:text-lg">
+              Paste one video or a whole channel. Mago saves the words with their timestamps, so you can search them and read along.
+            </p>
+          </>
+        ) : (
+          <h1 className="display mb-5 text-[34px] sm:text-[44px]">Library</h1>
+        )}
         <PasteBox onAdded={refresh} />
         {sources.error && <p className="mt-4 text-sm text-amber">{sources.error}</p>}
       </section>
 
-      {!empty && (
-        <div className="!mt-10 flex flex-wrap gap-2" role="group" aria-label="Show">
-          {FILTERS.map((option) => {
-            const counts = option.value && snapshot ? snapshot.platforms[option.value] : null;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={platform === option.value}
-                onClick={() => router.replace(option.value ? `/?platform=${option.value}` : "/", { scroll: false })}
-                className="tabular flex h-10 items-center gap-2 rounded-full border border-line px-4 text-sm font-semibold text-mute hover:text-ink aria-pressed:border-transparent aria-pressed:bg-ink aria-pressed:text-night"
-              >
-                {option.value && <PlatformMark platform={option.value} className="size-[18px]" />}
-                {option.label}
-                {counts && <span className="font-normal opacity-70">{counts.total}</span>}
-              </button>
-            );
-          })}
+      {!empty && sources.data && (
+        <div className="!mt-9">
+          <Pills
+            label="Show"
+            value={platform}
+            onChange={(value) => router.replace(value ? `/?platform=${value}` : "/", { scroll: false })}
+            options={[
+              { value: "", label: "Everything" },
+              { value: "youtube", label: "YouTube", count: snapshot?.platforms.youtube.total, icon: <PlatformMark platform="youtube" className="size-[18px]" /> },
+              { value: "tiktok", label: "TikTok", count: snapshot?.platforms.tiktok.total, icon: <PlatformMark platform="tiktok" className="size-[18px]" /> },
+            ]}
+          />
         </div>
       )}
 
       {working.data && working.data.items.length > 0 && (
-        <section aria-labelledby="working-heading" className="!mt-8">
-          <h2 id="working-heading" className="mb-4 text-xl font-semibold">
-            In progress <span className="tabular font-normal text-mute">{working.data.total}</span>
+        <section aria-labelledby="working-heading" className="!mt-9">
+          <h2 id="working-heading" className="mb-4 flex flex-wrap items-baseline gap-x-2 text-xl font-semibold">
+            {stopped.length === 2 ? "Waiting" : "In progress"}
+            <span className="tabular font-normal text-mute">{working.data.total}</span>
+            {stopped.length > 0 && (
+              <span className="text-sm font-normal text-amber">
+                {stopped.length === 2 ? "Downloads are stopped. Resume them in Activity." : `${stopped[0] === "youtube" ? "YouTube" : "TikTok"} downloads are stopped.`}
+              </span>
+            )}
           </h2>
           <div className="strip">
             {working.data.items.map((video) => (

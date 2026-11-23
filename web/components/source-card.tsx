@@ -10,7 +10,7 @@ export function Avatar({ source, className = "size-12" }: { source: Pick<Source,
   const initial = (source.title || source.handle || "?").replace(/^@/, "").charAt(0).toUpperCase();
   return src ? (
     // eslint-disable-next-line @next/next/no-img-element -- local, already resized
-    <img src={src} alt="" className={`${className} shrink-0 rounded-full bg-raised object-cover ring-4 ring-surface`} />
+    <img src={src} alt="" width={256} height={256} className={`${className} shrink-0 rounded-full bg-raised object-cover ring-4 ring-surface`} />
   ) : (
     <span className={`${className} display grid shrink-0 place-items-center rounded-full bg-murex text-xl text-on-murex ring-4 ring-surface`}>{initial}</span>
   );
@@ -22,7 +22,7 @@ export function Banner({ source, className = "" }: { source: Pick<Source, "banne
   const banner = mediaUrl(source.banner_path);
   if (banner) {
     // eslint-disable-next-line @next/next/no-img-element -- local, already resized
-    return <img src={banner} alt="" className={`w-full bg-raised object-cover ${className}`} />;
+    return <img src={banner} alt="" width={1600} height={900} className={`w-full bg-raised object-cover ${className}`} />;
   }
   const covers = source.covers ?? [];
   return (
@@ -45,7 +45,7 @@ export function progressText(source: Source): string {
 export function SourceCard({ source }: { source: Source }) {
   const working = Math.max(source.videos_total - source.videos_done - source.videos_failed, 0);
   return (
-    <Link href={`/c/${source.id}`} className="card group block overflow-hidden rounded-2xl border border-line bg-surface">
+    <Link href={`/c/${source.id}`} className="card group block overflow-hidden rounded-2xl border border-line bg-surface shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-murex/40 hover:shadow-md">
       <Banner source={source} className="h-24" />
       <div className="relative px-4 pb-4">
         <Avatar source={source} className="-mt-6 size-14" />

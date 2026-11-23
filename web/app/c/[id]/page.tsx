@@ -1,85 +1,129 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { CopyIcon, DownloadIcon, PlatformMark, SyncIcon } from "@/components/icons";
+import { ChevronLeftIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, MoreHorizontalIcon, RefreshCwIcon, RotateCcwIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
+import { Choice } from "@/components/choice";
+import { PlatformMark } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
+import { Pills } from "@/components/pills";
 import { Legend, Progress } from "@/components/progress";
 import { Avatar, Banner, progressText } from "@/components/source-card";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetSkeleton } from "@/components/video-card";
+import { useTitle } from "@/hooks/use-title";
+import { act } from "@/lib/act";
 import { api, kindLabel, shortDate, useApi, type Source, type Video } from "@/lib/api";
 
-const FILTERS = [
-  { value: "", label: "All" },
-  { value: "done", label: "Transcribed" },
-  { value: "working", label: "In progress" },
-  { value: "failed", label: "Failed" },
-] as const;
+type Filter = "" | "done" | "working" | "failed";
 
 const SORTS = [
-  { value: "newest", label: "Newest" },
-  { value: "oldest", label: "Oldest" },
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
   { value: "views", label: "Most viewed" },
   { value: "longest", label: "Longest" },
 ];
 
-const PAGE = 90;
+const EXPORTS = [
+  { format: "txt", label: "One text file" },
+  { format: "md", label: "One Markdown file, with timestamps" },
+  { format: "json", label: "JSON, with timed lines" },
+  { format: "zip", label: "Zip: Markdown and SRT per video" },
+];
+
+const PAGE = 60;
 
 export default function ChannelPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const key = useLiveKey();
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<Filter>("");
   const [sort, setSort] = useState("newest");
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
-  const [confirming, setConfirming] = useState(false);
-  const [copied, setCopied] = useState("");
-  async function copyAll() {
-    setCopied("Copying");
-    try {
-      const response = await fetch(`/api/sources/${id}/export?format=txt`);
-      if (!response.ok) throw new Error();
-      await navigator.clipboard.writeText(await response.text());
-      setCopied("Copied");
-    } catch {
-      setCopied("Couldn't copy");
-    }
-    setTimeout(() => setCopied(""), 2200);
-  }
+  const [removing, setRemoving] = useState(false);
+  const sentinel = useRef<HTMLDivElement>(null);
 
   const source = useApi<Source>(`/sources/${id}`, key);
   const params = new URLSearchParams({ source_id: id, sort, limit: String(limit) });
   if (status) params.set("status", status);
   if (query.trim()) params.set("q", query.trim());
   const videos = useApi<{ total: number; items: Video[] }>(`/videos?${params}`, key);
+  // Keep showing the previous page of results while the next one loads (no flash back to skeletons).
+  const [shown, setShown] = useState<{ total: number; items: Video[] } | null>(null);
+  if (videos.data && videos.data !== shown) setShown(videos.data);
 
-  if (source.error) return <p className="text-amber">{source.error}</p>;
   const data = source.data;
-  const failed = (data?.counts?.failed ?? 0) + (data?.counts?.skipped ?? 0);
+  useTitle(data?.title || data?.handle);
+  const hasMore = Boolean(shown && shown.total > shown.items.length);
+  const shownCount = shown?.items.length ?? 0;
 
-  async function sync() {
-    await api(`/sources/${id}/sync`, { method: "POST" });
-    source.reload();
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setLimit((current) => current + PAGE);
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, shownCount]);
+
+  if (source.error) {
+    return (
+      <div className="py-16 text-center">
+        <p className="text-lg font-semibold">This channel isn&apos;t in your library</p>
+        <p className="mt-1 text-mute">{source.error}</p>
+        <Button className="mt-5" render={<Link href="/" />}>
+          Back to the library
+        </Button>
+      </div>
+    );
   }
-  async function remove() {
-    await api(`/sources/${id}`, { method: "DELETE" });
-    router.push("/");
+
+  const failedCount = data?.counts?.failed ?? 0;
+  const problemCount = failedCount + (data?.counts?.skipped ?? 0);
+  const working = data ? Math.max(data.videos_total - data.videos_done - data.videos_failed, 0) : 0;
+  const change = <T,>(setter: (value: T) => void) => (value: T) => {
+    setter(value);
+    setLimit(PAGE);
+  };
+
+  function copyAll() {
+    const promise = fetch(`/api/sources/${id}/export?format=txt`).then(async (response) => {
+      if (!response.ok) throw new Error("export failed");
+      await navigator.clipboard.writeText(await response.text());
+    });
+    toast.promise(promise, { loading: "Copying every transcript", success: `Copied ${data?.videos_done ?? ""} transcripts`, error: "Couldn't copy. Use an export instead." });
   }
 
   return (
     <div>
-      <header className="overflow-hidden rounded-3xl border border-line bg-surface">
+      <Link href="/" className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-mute hover:text-ink">
+        <ChevronLeftIcon className="size-4" />
+        Library
+      </Link>
+
+      <header className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
         {data ? <Banner source={data} className="h-28 sm:h-44" /> : <div className="skeleton h-28 rounded-none sm:h-44" />}
         <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-end sm:px-7 sm:pb-6">
-          {data && <Avatar source={data} className="-mt-9 size-20 sm:-mt-10 sm:size-24" />}
+          {data ? <Avatar source={data} className="-mt-9 size-20 sm:-mt-10 sm:size-24" /> : <div className="skeleton -mt-9 size-20 rounded-full sm:size-24" />}
           <div className="min-w-0 flex-1">
-            <h1 className="display truncate text-3xl sm:text-5xl">{data?.title || data?.handle || " "}</h1>
+            <h1 className="display truncate text-3xl sm:text-5xl">{data?.title || data?.handle || " "}</h1>
             {data && (
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-mute">
                 <PlatformMark platform={data.platform} className="size-4" />
-                <a href={data.url} target="_blank" rel="noopener noreferrer" className="hover:text-ink hover:underline">
+                <a href={data.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-ink hover:underline">
                   {data.handle || kindLabel(data.platform, data.kind)}
+                  <ExternalLinkIcon className="size-3" aria-label="opens on the platform" />
                 </a>
                 <span className="tabular w-full sm:w-auto">
                   {[progressText(data), data.last_synced_at ? `checked ${shortDate(data.last_synced_at + "Z")}` : ""].filter(Boolean).join(", ")}
@@ -87,126 +131,133 @@ export default function ChannelPage() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={sync} disabled={data?.listing} className="flex h-10 items-center gap-2 rounded-full bg-murex px-5 text-sm font-semibold text-on-murex hover:brightness-110 disabled:opacity-70">
-              <SyncIcon className={`size-4 ${data?.listing ? "animate-spin" : ""}`} />
-              {data?.listing ? "Checking for new videos" : "Check for new videos"}
-            </button>
-            {confirming ? (
-              <>
-                <button type="button" onClick={remove} className="h-10 rounded-full border border-amber px-4 text-sm font-semibold text-amber">
-                  Remove channel and transcripts
-                </button>
-                <button type="button" onClick={() => setConfirming(false)} className="h-10 rounded-full px-3 text-sm text-mute hover:text-ink">
-                  Keep
-                </button>
-              </>
-            ) : (
-              <button type="button" onClick={() => setConfirming(true)} className="h-10 rounded-full border border-line px-4 text-sm font-medium text-mute hover:text-ink">
-                Remove
-              </button>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="lg"
+              className="h-10 px-5 font-semibold"
+              disabled={!data || data.listing}
+              onClick={() => act(() => api(`/sources/${id}/sync`, { method: "POST" }), "Checking for new videos").then(source.reload)}
+            >
+              <RefreshCwIcon className={data?.listing ? "animate-spin" : ""} />
+              {data?.listing ? "Checking" : "Check for new videos"}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="icon-lg" className="size-10" aria-label="More actions for this channel" />}>
+                <MoreHorizontalIcon />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuItem disabled={!data?.videos_done} onClick={copyAll}>
+                  <CopyIcon />
+                  Copy every transcript
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {EXPORTS.map((item) => (
+                  <DropdownMenuItem key={item.format} disabled={!data?.videos_done} render={<a href={`/api/sources/${id}/export?format=${item.format}`} download />}>
+                    <DownloadIcon />
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={failedCount === 0}
+                  onClick={() => act(() => api<{ queued: number }>(`/retry-failed?source_id=${id}`, { method: "POST" }), (result) => `${result.queued} videos queued again`).then(source.reload)}
+                >
+                  <RotateCcwIcon />
+                  {failedCount > 0 ? `Try the ${failedCount} failed again` : "No failed videos"}
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => setRemoving(true)}>
+                  <Trash2Icon />
+                  Remove this channel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         {data && data.videos_total > 0 && (
           <div className="border-t border-line px-4 py-4 sm:px-7">
-            <Progress done={data.videos_done} working={Math.max(data.videos_total - data.videos_done - data.videos_failed, 0)} failed={data.videos_failed} total={data.videos_total} className="h-2" />
+            <Progress done={data.videos_done} working={working} failed={data.videos_failed} total={data.videos_total} className="h-2" />
             <div className="mt-2.5">
-              <Legend done={data.videos_done} working={Math.max(data.videos_total - data.videos_done - data.videos_failed, 0)} failed={data.videos_failed} />
+              <Legend done={data.videos_done} working={working} failed={data.videos_failed} />
             </div>
           </div>
         )}
       </header>
 
-      <div className="mb-6 mt-7 flex flex-wrap items-center gap-x-4 gap-y-3">
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show">
-          {FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              type="button"
-              aria-pressed={status === filter.value}
-              onClick={() => {
-                setStatus(filter.value);
-                setLimit(PAGE);
-              }}
-              className="tabular rounded-full border border-line px-3.5 py-1.5 text-sm font-medium text-mute hover:text-ink aria-pressed:border-transparent aria-pressed:bg-ink aria-pressed:text-night"
-            >
-              {filter.label}
-              {filter.value === "failed" && failed > 0 ? ` ${failed}` : ""}
-            </button>
-          ))}
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {data && data.videos_done > 0 && (
-            <>
-              <button type="button" onClick={copyAll} className="flex h-9 items-center gap-2 rounded-full border border-line px-3.5 text-sm font-medium hover:bg-raised" title="Copy every transcript of this channel">
-                <CopyIcon className="size-4" />
-                <span aria-live="polite">{copied || "Copy all"}</span>
-              </button>
-              <details className="relative">
-                <summary className="flex h-9 cursor-pointer list-none items-center gap-2 rounded-full border border-line px-3.5 text-sm font-medium hover:bg-raised [&::-webkit-details-marker]:hidden">
-                  <DownloadIcon className="size-4" />
-                  Export all
-                </summary>
-                <ul className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
-                  {[
-                    { format: "txt", label: "One text file" },
-                    { format: "md", label: "One Markdown file, with timestamps" },
-                    { format: "json", label: "JSON, with timed lines" },
-                    { format: "zip", label: "Zip: Markdown and SRT per video" },
-                  ].map((item) => (
-                    <li key={item.format}>
-                      <a href={`/api/sources/${id}/export?format=${item.format}`} download className="block px-4 py-2 text-sm hover:bg-raised">
-                        {item.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </>
-          )}
-          <label className="sr-only" htmlFor="title-filter">
-            Filter by title
+      <div className="sticky top-14 z-20 -mx-4 mb-6 mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 bg-night/90 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6">
+        <Pills<Filter>
+          label="Show"
+          value={status}
+          onChange={change(setStatus)}
+          options={[
+            { value: "", label: "All", count: data?.videos_total },
+            { value: "done", label: "Transcribed", count: data?.videos_done },
+            { value: "working", label: "In progress", count: working },
+            { value: "failed", label: "Failed", count: problemCount },
+          ]}
+        />
+        <div className="ml-auto flex items-center gap-2">
+          <label className="relative block">
+            <span className="sr-only">Filter by title</span>
+            <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-mute" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => change(setQuery)(event.target.value)}
+              placeholder="Filter by title"
+              className="h-10 w-40 rounded-full border border-line bg-surface pl-10 pr-4 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-mute focus:border-murex focus:ring-4 focus:ring-murex/15 sm:w-60"
+            />
           </label>
-          <input
-            id="title-filter"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter by title"
-            className="h-9 w-40 rounded-full border border-line bg-surface px-4 text-sm outline-none placeholder:text-mute focus:border-murex sm:w-56"
-          />
-          <label className="sr-only" htmlFor="sort">
-            Sort
-          </label>
-          <select id="sort" value={sort} onChange={(event) => setSort(event.target.value)} className="h-9 rounded-full border border-line bg-surface px-3 text-sm outline-none focus:border-murex">
-            {SORTS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Choice label="Sort" value={sort} onChange={change(setSort)} items={SORTS} />
         </div>
       </div>
 
-      {!videos.data ? (
+      {!shown ? (
         <SheetSkeleton tall={data?.platform === "tiktok"} />
-      ) : videos.data.items.length === 0 ? (
-        <p className="py-10 text-mute">
-          {data?.listing ? "Listing this channel's videos. They appear here as they are found." : status || query ? "No videos match these filters." : "No videos found. Check for new videos to list the channel again."}
-        </p>
+      ) : shown.items.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-line px-6 py-14 text-center">
+          <p className="font-semibold">
+            {data?.listing ? "Listing this channel's videos" : status || query ? "No videos match these filters" : "No videos found"}
+          </p>
+          <p className="mt-1 text-sm text-mute">
+            {data?.listing ? "They appear here as they are found." : status || query ? "Clear the filter or choose All." : "Check for new videos to list the channel again."}
+          </p>
+        </div>
       ) : (
         <>
-          <Sheet videos={videos.data.items} />
-          {videos.data.total > videos.data.items.length && (
-            <div className="mt-10 text-center">
-              <button type="button" onClick={() => setLimit((current) => Math.min(current + PAGE, 200))} disabled={limit >= 200} className="tabular h-11 rounded-full border border-line px-6 text-sm font-semibold hover:bg-raised disabled:opacity-50">
-                {limit >= 200 ? `Showing 200 of ${videos.data.total}. Filter to narrow down` : `Show more (${videos.data.total - videos.data.items.length} left)`}
-              </button>
+          <Sheet videos={shown.items} />
+          {hasMore && (
+            <div ref={sentinel} className="mt-8" aria-hidden>
+              <SheetSkeleton count={6} tall={data?.platform === "tiktok"} />
             </div>
           )}
+          <p className="tabular mt-10 text-center text-sm text-mute" aria-live="polite">
+            {hasMore ? `Showing ${shown.items.length} of ${shown.total}` : shown.total > PAGE ? `All ${shown.total} videos` : ""}
+          </p>
         </>
       )}
+
+      <AlertDialog open={removing} onOpenChange={setRemoving}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Remove ${data?.title || "this channel"}?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`This deletes its ${data?.videos_total ?? ""} videos and ${data?.videos_done ?? ""} transcripts from your library. It can't be undone, but you can add the channel again and transcribe it from scratch.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                const removed = await act(() => api(`/sources/${id}`, { method: "DELETE" }).then(() => true), `${data?.title || "Channel"} removed`);
+                if (removed) router.push("/");
+              }}
+            >
+              Remove channel and transcripts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

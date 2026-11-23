@@ -227,7 +227,7 @@ def videos(
     platform: Literal["youtube", "tiktok"] | None = None,
     single: bool = False,
     q: str = Query(default="", max_length=200),
-    limit: int = Query(default=60, ge=1, le=200),
+    limit: int = Query(default=60, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ):
     where, params = ["1=1"], []

@@ -1,34 +1,63 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
-import { CopyIcon, DownloadIcon, PlatformMark } from "@/components/icons";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ChevronRightIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, SearchIcon } from "lucide-react";
+import { PlatformMark } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
 import { Player, type PlayerHandle } from "@/components/player";
 import { Thumb } from "@/components/thumb";
-import { useRouter } from "next/navigation";
-import { api, clock, compact, isWorking, shortDate, statusLabel, useApi, type ChannelOffer, type Segment, type Source, type Video } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import { useTitle } from "@/hooks/use-title";
+import { act } from "@/lib/act";
+import { api, clock, compact, isWorking, platformName, shortDate, statusLabel, useApi, type ChannelOffer, type Segment, type Source, type Video } from "@/lib/api";
 
-type Paragraph = { start: number; lines: (Segment & { index: number })[] };
+type Line = Segment & { index: number };
+type Paragraph = { start: number; first: number; last: number; lines: Line[] };
+type Payload = {
+  video: Video;
+  segments: Segment[];
+  channel: ChannelOffer | null;
+  original: { id: number; title: string | null } | null;
+  copies: { id: number; title: string | null; duplicate_kind: string }[];
+};
 
-/** Group timed lines into paragraphs: break on a pause, or after a sentence once the paragraph is long. */
+/** Group timed lines into paragraphs: break on a pause, or at a sentence end once the paragraph is long. */
 function toParagraphs(segments: Segment[]): Paragraph[] {
   const paragraphs: Paragraph[] = [];
   let length = 0;
   segments.forEach((segment, index) => {
     const current = paragraphs.at(-1);
     const last = current?.lines.at(-1);
-    const sentenceEnded = last ? /[.?!]["')]?$/.test(last.text) : false;
-    if (!current || !last || segment.start - last.end > 2 || (length > 420 && sentenceEnded) || length > 900) {
-      paragraphs.push({ start: segment.start, lines: [{ ...segment, index }] });
+    const sentenceEnded = last ? /[.?!]["')]?$/.test(last.text.trim()) : false;
+    if (!current || !last || segment.start - last.end > 2 || (length > 420 && sentenceEnded) || length > 1600) {
+      paragraphs.push({ start: segment.start, first: index, last: index, lines: [{ ...segment, index }] });
       length = segment.text.length;
     } else {
       current.lines.push({ ...segment, index });
+      current.last = index;
       length += segment.text.length + 1;
     }
   });
   return paragraphs;
+}
+
+/** The line being spoken at `seconds` (binary search; transcripts can have thousands of lines). */
+function lineAt(segments: Segment[], seconds: number): number {
+  let low = 0;
+  let high = segments.length - 1;
+  let found = -1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    if (segments[middle].start <= seconds + 0.15) {
+      found = middle;
+      low = middle + 1;
+    } else high = middle - 1;
+  }
+  return found;
 }
 
 /** TikTok has no titles: yt-dlp cuts the caption short and adds "...". The video's own page shows all of it. */
@@ -40,49 +69,114 @@ function fullTitle(video: Video): string {
 
 const EXPORTS = [
   { format: "txt", label: "Plain text" },
-  { format: "md", label: "Markdown" },
+  { format: "md", label: "Markdown, with timestamps" },
   { format: "srt", label: "SRT subtitles" },
   { format: "vtt", label: "VTT subtitles" },
   { format: "json", label: "JSON" },
 ];
 
+/** One paragraph. Memoised: while the video plays only the paragraph holding the current line re-renders.
+ *  Lines are clickable; the timestamp is the keyboard stop, so a long transcript is not thousands of tab stops. */
+const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, onSeek }: { paragraph: Paragraph; active: number; needle: string; onSeek: (seconds: number) => void }) {
+  return (
+    <p className="mb-5 grid grid-cols-[3.6rem_minmax(0,1fr)] gap-x-2">
+      <button
+        type="button"
+        onClick={() => onSeek(paragraph.start)}
+        className="tabular -ml-1.5 mt-[0.2em] flex h-7 items-center self-start rounded-md px-1.5 font-sans text-xs font-medium text-mute hover:bg-raised hover:text-ink"
+        aria-label={`Play from ${clock(paragraph.start)}`}
+      >
+        {clock(paragraph.start)}
+      </button>
+      <span>
+        {paragraph.lines.map((line) => {
+          const hit = needle && line.text.toLowerCase().includes(needle);
+          return (
+            <span
+              key={line.index}
+              data-line={line.index}
+              onClick={() => onSeek(line.start)}
+              className={`cursor-pointer rounded-[3px] box-decoration-clone py-0.5 transition-colors hover:bg-raised ${line.index === active ? "bg-murex-soft shadow-[inset_0_-2px_0_var(--murex)]" : ""} ${hit ? "!bg-[var(--mark)]" : ""}`}
+            >
+              {line.text}{" "}
+            </span>
+          );
+        })}
+      </span>
+    </p>
+  );
+});
+
 function VideoView() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const start = Math.max(0, Number(useSearchParams().get("t")) || 0);
   const key = useLiveKey(1500);
-  const { data, error, reload } = useApi<{ video: Video; segments: Segment[]; channel: ChannelOffer | null; original: { id: number; title: string | null } | null; copies: { id: number; title: string | null; duplicate_kind: string }[] }>(`/videos/${id}`, key);
-  const router = useRouter();
-  const [addingChannel, setAddingChannel] = useState(false);
+  const { data, error, reload } = useApi<Payload>(`/videos/${id}`, key);
   const player = useRef<PlayerHandle>(null);
+  const playerBox = useRef<HTMLDivElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const [time, setTime] = useState(start);
+  const lastManualScroll = useRef(0);
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [addingChannel, setAddingChannel] = useState(false);
 
-  const segments = useMemo(() => data?.segments ?? [], [data]);
+  // A background refresh returns the same transcript: keep the same array so nothing re-renders.
+  const signature = data ? `${data.video.id}:${data.segments.length}:${data.video.transcribed_at}` : "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the signature on purpose
+  const segments = useMemo(() => data?.segments ?? [], [signature]);
   const paragraphs = useMemo(() => toParagraphs(segments), [segments]);
   const needle = query.trim().toLowerCase();
   const matches = useMemo(() => (needle ? segments.filter((segment) => segment.text.toLowerCase().includes(needle)).length : 0), [segments, needle]);
+  useTitle(data?.video.title);
 
-  let active = -1;
-  for (let index = 0; index < segments.length && segments[index].start <= time + 0.15; index++) active = index;
+  // The player reports its position several times a second; state changes only when the line does.
+  const [played, setPlayed] = useState<number | null>(null);
+  const onTime = useCallback((seconds: number) => {
+    const found = lineAt(segments, seconds);
+    setPlayed((current) => (current === found ? current : found));
+  }, [segments]);
+  // Before anything has played, the current line is the one the link pointed at (?t=).
+  const active = played ?? (start > 0 ? lineAt(segments, start) : -1);
 
+  const seek = useCallback((seconds: number) => player.current?.seek(seconds), []);
+
+  // Following: keep the current line in view by scrolling the page, unless the reader has just scrolled themselves.
   useEffect(() => {
-    if (!follow || active < 0 || needle) return;
+    const mark = () => (lastManualScroll.current = Date.now());
+    window.addEventListener("wheel", mark, { passive: true });
+    window.addEventListener("touchmove", mark, { passive: true });
+    return () => {
+      window.removeEventListener("wheel", mark);
+      window.removeEventListener("touchmove", mark);
+    };
+  }, []);
+  useEffect(() => {
+    if (!follow || active < 0 || needle || Date.now() - lastManualScroll.current < 4000) return;
     const line = list.current?.querySelector<HTMLElement>(`[data-line="${active}"]`);
-    const box = list.current;
-    if (!line || !box || box.scrollHeight <= box.clientHeight) return;
-    const top = line.offsetTop; // the list is the offset parent (position: relative)
-    if (top < box.scrollTop + 40 || top > box.scrollTop + box.clientHeight - 120) {
-      box.scrollTo({ top: top - box.clientHeight / 3, behavior: "smooth" });
+    if (!line) return;
+    const phone = window.matchMedia("(max-width: 1023px)").matches;
+    const top = Math.max((phone ? playerBox.current : toolbar.current)?.getBoundingClientRect().bottom ?? 0, 64) + 12;
+    const rect = line.getBoundingClientRect();
+    if (rect.top < top || rect.bottom > window.innerHeight - 110) {
+      const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollBy({ top: rect.top - (top + (window.innerHeight - top) * 0.3), behavior: calm ? "auto" : "smooth" });
     }
   }, [active, follow, needle]);
 
-  const onTime = useCallback((seconds: number) => setTime(seconds), []);
-
-  if (error) return <p className="text-amber">{error}</p>;
   if (!data) {
+    if (error) {
+      return (
+        <div className="py-16 text-center">
+          <p className="text-lg font-semibold">This video isn&apos;t in your library</p>
+          <p className="mt-1 text-mute">{error}</p>
+          <Button className="mt-5" render={<Link href="/" />}>
+            Back to the library
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div className="skeleton aspect-video" />
@@ -97,203 +191,190 @@ function VideoView() {
 
   const { video } = data;
   const done = video.status === "done";
-
-  async function copy() {
-    await navigator.clipboard.writeText(paragraphs.map((paragraph) => paragraph.lines.map((line) => line.text).join(" ")).join("\n\n"));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  }
+  const inChannel = video.source_kind !== "video";
+  const copy = () => act(() => navigator.clipboard.writeText(paragraphs.map((paragraph) => paragraph.lines.map((line) => line.text).join(" ")).join("\n\n")), "Transcript copied");
+  const retry = () => act(() => api(`/videos/${video.id}/retry`, { method: "POST" }), "Queued. It will be transcribed shortly.").then(reload);
   async function addChannel(url: string) {
     setAddingChannel(true);
-    try {
-      const source = await api<Source>("/sources", { method: "POST", body: JSON.stringify({ url }) });
-      router.push(`/c/${source.id}`);
-    } finally {
-      setAddingChannel(false);
-    }
-  }
-  async function retry() {
-    await api(`/videos/${video.id}/retry`, { method: "POST" });
-    reload();
+    const source = await act(() => api<Source>("/sources", { method: "POST", body: JSON.stringify({ url }) }), "Channel added. Listing its videos now.");
+    setAddingChannel(false);
+    if (source) router.push(`/c/${source.id}`);
   }
 
   return (
-    <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-      <div className="lg:sticky lg:top-20 lg:self-start">
-        {done ? (
-          <Player ref={player} platform={video.platform} videoId={video.platform_video_id} shape={video.shape} start={start} title={video.title ?? "Video"} onTime={onTime} />
-        ) : (
-          <Thumb path={video.thumb_path} blur={video.thumb_blur} shape={video.shape} size="lg" status={video.status} progress={video.progress} eager className={video.shape === "tall" ? "mx-auto max-h-[70dvh]" : ""} />
-        )}
-        <h1 className="mt-4 text-xl font-semibold leading-snug sm:text-2xl [overflow-wrap:anywhere]">{fullTitle(video)}</h1>
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm text-mute">
-          <PlatformMark platform={video.platform} className="size-4" />
-          {video.source_kind !== "video" && video.source_title ? (
-            <Link href={`/c/${video.source_id}`} className="font-medium text-ink hover:underline">
+    <div>
+      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1 text-sm font-medium text-mute">
+        <Link href="/" className="hover:text-ink">
+          Library
+        </Link>
+        {inChannel && (
+          <>
+            <ChevronRightIcon className="size-3.5" />
+            <Link href={`/c/${video.source_id}`} className="truncate hover:text-ink">
               {video.source_title}
             </Link>
-          ) : (
-            <span className="font-medium text-ink">{video.source_title !== video.title ? video.source_title : video.source_handle}</span>
-          )}
-          <span className="tabular text-mute">{[shortDate(video.published_at), video.view_count != null ? `${compact(video.view_count)} views` : "", clock(video.duration_s)].filter(Boolean).join(", ")}</span>
-        </p>
-        {data.original && (
-          <p className="mt-4 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
-            {video.duplicate_kind === "clip" ? "A clip of " : "Says the same as "}
-            <Link href={`/v/${data.original.id}`} className="font-semibold underline decoration-line underline-offset-4 hover:decoration-current">
-              {data.original.title || "another video"}
-            </Link>
-            . Search shows the original only.
-          </p>
-        )}
-        {data.copies.length > 0 && (
-          <p className="mt-4 text-sm text-mute">
-            {`${data.copies.length === 1 ? "1 other video repeats" : `${data.copies.length} other videos repeat`} these words: `}
-            {data.copies.map((copy, index) => (
-              <span key={copy.id}>
-                {index > 0 && ", "}
-                <Link href={`/v/${copy.id}`} className="underline decoration-line underline-offset-4 hover:text-ink">
-                  {copy.title || "untitled"}
-                </Link>
-              </span>
-            ))}
-          </p>
-        )}
-        {data.channel && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-            <p className="min-w-0 text-sm">
-              <span className="block truncate font-semibold">{data.channel.name}</span>
-              <span className="block text-mute">
-                {data.channel.source_id ? "This channel is in your library." : "Only this video is in your library, not the rest of the channel."}
-              </span>
-            </p>
-            {data.channel.source_id ? (
-              <Link href={`/c/${data.channel.source_id}`} className="grid h-9 shrink-0 place-items-center rounded-full border border-line px-4 text-sm font-semibold hover:bg-raised">
-                Open channel
-              </Link>
-            ) : (
-              <button type="button" onClick={() => addChannel(data.channel!.url)} disabled={addingChannel} className="h-9 shrink-0 rounded-full border border-murex px-4 text-sm font-semibold text-murex hover:bg-murex-soft disabled:opacity-60">
-                {addingChannel ? "Adding" : "Transcribe the whole channel"}
-              </button>
-            )}
-          </div>
-        )}
-        <p className="mt-3 text-sm text-mute">
-          <a href={video.url} target="_blank" rel="noopener noreferrer" className="underline decoration-line underline-offset-4 hover:text-ink">
-            {`Open on ${video.platform === "youtube" ? "YouTube" : "TikTok"}`}
-          </a>
-        </p>
-      </div>
-
-      <section aria-label="Transcript" className="min-w-0">
-        {done ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="sr-only" htmlFor="in-transcript">
-                Find in this transcript
-              </label>
-              <input
-                id="in-transcript"
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Find in this transcript"
-                className="h-10 min-w-0 flex-1 rounded-full border border-line bg-surface px-4 text-sm outline-none placeholder:text-mute focus:border-murex"
-              />
-              <button type="button" onClick={copy} className="flex h-10 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-raised">
-                <CopyIcon className="size-4" />
-                <span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
-              </button>
-              <details className="relative">
-                <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-raised [&::-webkit-details-marker]:hidden">
-                  <DownloadIcon className="size-4" />
-                  Export
-                </summary>
-                <ul className="absolute right-0 z-20 mt-2 w-48 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
-                  {EXPORTS.map((item) => (
-                    <li key={item.format}>
-                      <a href={`/api/videos/${video.id}/export?format=${item.format}`} download className="block px-4 py-2 text-sm hover:bg-raised">
-                        {item.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </div>
-            <p className="tabular mt-3 flex flex-wrap items-center gap-x-3 text-xs text-mute">
-              <span className="flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-sea" />
-                {video.method === "whisper" ? "Transcribed by Whisper on this computer" : "Made from the platform's captions"}
-                {video.language ? `, ${video.language}` : ""}
-              </span>
-              {needle && <span>{matches === 1 ? "1 line matches" : `${matches} lines match`}</span>}
-              <label className="ml-auto flex cursor-pointer items-center gap-1.5">
-                <input type="checkbox" checked={follow} onChange={(event) => setFollow(event.target.checked)} className="accent-[var(--murex)]" />
-                Follow the video
-              </label>
-            </p>
-            <div ref={list} className="relative mt-4 max-w-[68ch] font-serif text-[17px] leading-[1.75] lg:max-h-[calc(100dvh-13.5rem)] lg:overflow-y-auto lg:pr-3">
-              {segments.length === 0 && <p className="font-sans text-base text-mute">No speech was found in this video.</p>}
-              {paragraphs.map((paragraph) => {
-                const visible = !needle || paragraph.lines.some((line) => line.text.toLowerCase().includes(needle));
-                if (!visible) return null;
-                return (
-                  <p key={paragraph.start} className="mb-5 grid grid-cols-[3.4rem_minmax(0,1fr)] gap-x-2">
-                    <button type="button" onClick={() => player.current?.seek(paragraph.start)} className="tabular mt-[0.42em] self-start text-left font-sans text-xs font-medium text-mute hover:text-murex" aria-label={`Play from ${clock(paragraph.start)}`}>
-                      {clock(paragraph.start)}
-                    </button>
-                    <span>
-                      {paragraph.lines.map((line) => {
-                        const hit = needle && line.text.toLowerCase().includes(needle);
-                        return (
-                          <span
-                            key={line.index}
-                            data-line={line.index}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => player.current?.seek(line.start)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                player.current?.seek(line.start);
-                              }
-                            }}
-                            className={`cursor-pointer rounded-[3px] box-decoration-clone py-0.5 transition-colors hover:bg-raised ${line.index === active ? "bg-murex-soft text-ink shadow-[inset_0_-2px_0_var(--murex)]" : line.index < active ? "text-mute" : ""} ${hit ? "!bg-[var(--mark)] !text-ink" : ""}`}
-                          >
-                            {line.text}{" "}
-                          </span>
-                        );
-                      })}
-                    </span>
-                  </p>
-                );
-              })}
-            </div>
           </>
-        ) : (
-          <div className="rounded-2xl border border-line bg-surface p-6">
-            <p className="text-lg font-semibold">{statusLabel(video)}</p>
-            <p className="mt-1 max-w-prose text-sm text-mute">
-              {video.status === "skipped" && video.duplicate_of
-                ? video.error
-                : video.status === "skipped"
-                ? `This video can't be reached, so it was left out. ${video.error ?? ""}`
-                : video.status === "failed"
-                  ? `The transcript couldn't be made. ${video.error ?? ""}`
-                  : video.error
-                    ? `Waiting to try again. ${video.error}`
-                    : isWorking(video.status)
-                      ? "The transcript appears here as soon as it is ready. You can leave this page."
-                      : "This video hasn't been transcribed yet."}
-            </p>
-            {!isWorking(video.status) && (
-              <button type="button" onClick={retry} className="mt-4 h-10 rounded-full bg-murex px-5 text-sm font-semibold text-on-murex hover:brightness-110">
-                {video.status === "listed" || video.duplicate_of ? "Transcribe this video anyway" : "Try again"}
-              </button>
+        )}
+      </nav>
+
+      <div className="grid gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        {/* On a phone this column dissolves, so the player can stick under the header while the transcript scrolls. */}
+        <div className="max-lg:contents lg:sticky lg:top-20 lg:self-start">
+          <div ref={playerBox} className="max-lg:sticky max-lg:top-14 max-lg:z-20 max-lg:-mx-4 max-lg:bg-night max-lg:px-4 max-lg:py-2">
+            {done ? (
+              <Player ref={player} platform={video.platform} videoId={video.platform_video_id} shape={video.shape} start={start} title={video.title ?? "Video"} onTime={onTime} />
+            ) : (
+              <Thumb path={video.thumb_path} blur={video.thumb_blur} shape={video.shape} size="lg" status={video.status} progress={video.progress} eager className={video.shape === "tall" ? "mx-auto max-h-[44dvh] lg:max-h-[70dvh]" : ""} />
             )}
           </div>
-        )}
-      </section>
+          <div>
+            <h1 className="mt-1 text-xl font-semibold leading-snug [overflow-wrap:anywhere] sm:text-2xl lg:mt-4">{fullTitle(video)}</h1>
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mute">
+              <PlatformMark platform={video.platform} className="size-4" />
+              {inChannel ? (
+                <Link href={`/c/${video.source_id}`} className="font-medium text-ink hover:underline">
+                  {video.source_title}
+                </Link>
+              ) : video.channel_url ? (
+                <a href={video.channel_url} target="_blank" rel="noopener noreferrer" className="font-medium text-ink hover:underline">
+                  {video.channel_name || video.source_handle}
+                </a>
+              ) : (
+                <span className="font-medium text-ink">{video.channel_name || video.source_handle}</span>
+              )}
+              <span className="tabular">{[shortDate(video.published_at), video.view_count != null ? `${compact(video.view_count)} views` : "", clock(video.duration_s)].filter(Boolean).join(", ")}</span>
+              <a href={video.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center gap-1 underline decoration-line underline-offset-4 hover:text-ink">
+                {`Open on ${platformName(video.platform)}`}
+                <ExternalLinkIcon className="size-3" />
+              </a>
+            </p>
+            {data.original && (
+              <p className="mt-4 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
+                {video.duplicate_kind === "clip" ? "A clip of " : "Says the same as "}
+                <Link href={`/v/${data.original.id}`} className="font-semibold underline decoration-line underline-offset-4 hover:decoration-current">
+                  {data.original.title || "another video"}
+                </Link>
+                . Search shows the original only.
+              </p>
+            )}
+            {data.copies.length > 0 && (
+              <p className="mt-4 text-sm text-mute">
+                {`${data.copies.length === 1 ? "1 other video repeats" : `${data.copies.length} other videos repeat`} these words: `}
+                {data.copies.map((item, index) => (
+                  <span key={item.id}>
+                    {index > 0 && ", "}
+                    <Link href={`/v/${item.id}`} className="underline decoration-line underline-offset-4 hover:text-ink">
+                      {item.title || "untitled"}
+                    </Link>
+                  </span>
+                ))}
+              </p>
+            )}
+            {data.channel && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+                <p className="min-w-0 text-sm">
+                  <span className="block truncate font-semibold">{data.channel.name}</span>
+                  <span className="block text-mute">
+                    {data.channel.source_id ? "This channel is in your library." : "Only this video is in your library, not the rest of the channel."}
+                  </span>
+                </p>
+                {data.channel.source_id ? (
+                  <Button variant="outline" render={<Link href={`/c/${data.channel.source_id}`} />}>
+                    Open channel
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => addChannel(data.channel!.url)} disabled={addingChannel}>
+                    {addingChannel ? "Adding" : "Transcribe the whole channel"}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <section aria-labelledby="transcript-heading" className="min-w-0">
+          <h2 id="transcript-heading" className="sr-only">
+            Transcript
+          </h2>
+          {done ? (
+            <>
+              <div ref={toolbar} className="z-10 -mx-1 flex flex-wrap items-center gap-2 bg-night/90 px-1 py-2 backdrop-blur-xl lg:sticky lg:top-14">
+                <label className="relative block min-w-0 flex-1">
+                  <span className="sr-only">Find in this transcript</span>
+                  <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-mute" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Find in transcript"
+                    className="h-10 w-full rounded-full border border-line bg-surface pl-10 pr-4 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-mute focus:border-murex focus:ring-4 focus:ring-murex/15"
+                  />
+                </label>
+                <Button variant="outline" size="lg" className="h-10 px-4" onClick={copy}>
+                  <CopyIcon />
+                  Copy
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button variant="outline" size="lg" className="h-10 px-4" />}>
+                    <DownloadIcon />
+                    Export
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60">
+                    {EXPORTS.map((item) => (
+                      <DropdownMenuItem key={item.format} render={<a href={`/api/videos/${video.id}/export?format=${item.format}`} download />}>
+                        {item.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <div className="tabular mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-mute">
+                <span className="flex items-center gap-1.5">
+                  <span className="size-1.5 rounded-full bg-sea" />
+                  {video.method === "whisper" ? "Transcribed by Whisper on this computer" : `Made from ${platformName(video.platform)}'s captions`}
+                  {video.language ? `, ${video.language}` : ""}
+                </span>
+                {needle && <span aria-live="polite">{matches === 1 ? "1 line matches" : `${matches} lines match`}</span>}
+                <label className="ml-auto flex min-h-6 cursor-pointer items-center gap-2">
+                  <Switch size="sm" checked={follow} onCheckedChange={setFollow} />
+                  Follow the video
+                </label>
+              </div>
+              <div ref={list} className="mt-5 max-w-[68ch] font-serif text-[17px] leading-[1.75]">
+                {segments.length === 0 && <p className="font-sans text-base text-mute">No speech was found in this video.</p>}
+                {needle && matches === 0 && <p className="font-sans text-base text-mute">{`"${query.trim()}" isn't said in this video.`}</p>}
+                {paragraphs.map((paragraph) =>
+                  !needle || paragraph.lines.some((line) => line.text.toLowerCase().includes(needle)) ? (
+                    <ParagraphView key={paragraph.first} paragraph={paragraph} active={active >= paragraph.first && active <= paragraph.last ? active : -1} needle={needle} onSeek={seek} />
+                  ) : null,
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-2xl border border-line bg-surface p-6">
+              <p className="text-lg font-semibold">{statusLabel(video)}</p>
+              <p className="mt-1 max-w-prose text-sm text-mute">
+                {video.status === "skipped" && video.duplicate_of
+                  ? video.error
+                  : video.status === "skipped"
+                    ? `This video can't be reached, so it was left out. ${video.error ?? ""}`
+                    : video.status === "failed"
+                      ? `The transcript couldn't be made. ${video.error ?? ""}`
+                      : video.error
+                        ? video.error
+                        : isWorking(video.status)
+                          ? "The transcript appears here as soon as it is ready. You can leave this page."
+                          : "This video hasn't been transcribed yet."}
+              </p>
+              {!isWorking(video.status) && (
+                <Button size="lg" className="mt-4 h-10 px-5 font-semibold" onClick={retry}>
+                  {video.status === "listed" || video.duplicate_of ? "Transcribe this video anyway" : "Try again"}
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

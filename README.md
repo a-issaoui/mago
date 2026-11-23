@@ -19,7 +19,8 @@ bin/mago restart [api|worker|web]
 bin/mago stop
 ```
 
-Then open <https://mago.test>. Logs are in `data/logs/`.
+Then open <https://mago.test>. Logs are in `data/logs/`. Press Ctrl K (or /) on any screen to search what was
+said, jump to a channel, or stop and resume downloads.
 
 | Process | What it does | Address |
 | --- | --- | --- |
@@ -82,7 +83,7 @@ mago/jobs.py, worker.py the queue and the process that works through it
 mago/thumbs.py          local WebP thumbnails, avatars, banners
 mago/api.py             HTTP API + live events (SSE)
 mago/mcp_server.py      MCP tools over the same database
-web/                    the interface
+web/                    the interface: Next.js 16, Tailwind 4, shadcn/ui (Base UI), lucide icons, sonner toasts
 data/                   the library: mago.db, thumbs/, avatars/, logs/ (not in git)
 ```
 
