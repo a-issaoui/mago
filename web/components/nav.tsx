@@ -71,7 +71,7 @@ function ThemeButton() {
 /** The menu on wide screens: pages, your channels, and the queue, on every screen. */
 export function Sidebar() {
   const { snapshot, busy, stopped, total, done, isCurrent, pathname, working } = useNavState();
-  const key = useLiveKey(5000);
+  const key = useLiveKey(800);
   const sources = useApi<Source[]>("/sources", key);
   const channels = (sources.data ?? []).filter((source) => source.kind !== "video");
 

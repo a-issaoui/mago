@@ -109,7 +109,7 @@ function ChannelView() {
             {data && (
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-mute">
                 <PlatformMark platform={data.platform} className="size-4" />
-                <a href={data.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-ink hover:underline">
+                <a href={data.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center gap-1 hover:text-ink hover:underline">
                   {data.handle || kindLabel(data.platform, data.kind)}
                   <ExternalLinkIcon className="size-3" aria-label="opens on the platform" />
                 </a>

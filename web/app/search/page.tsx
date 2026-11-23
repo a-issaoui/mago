@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { Pager } from "@/components/pager";
 import { Pills } from "@/components/pills";
 import { Thumb } from "@/components/thumb";
+import { useLiveKey } from "@/components/live";
 import { useTitle } from "@/hooks/use-title";
 import { clock, platformName, shortDate, useApi, type Hit, type Source } from "@/lib/api";
 
@@ -66,7 +67,8 @@ function SearchView() {
   const search = new URLSearchParams({ q: query, limit: String(PAGE), offset: String((page - 1) * PAGE) });
   if (platform) search.set("platform", platform);
   if (sourceId) search.set("source_id", sourceId);
-  const results = useApi<{ items: Hit[]; loose?: boolean; has_more?: boolean }>(query.length >= 2 ? `/search?${search}` : null);
+  const key = useLiveKey(1500); // newly transcribed videos join the results without a reload
+  const results = useApi<{ items: Hit[]; loose?: boolean; has_more?: boolean }>(query.length >= 2 ? `/search?${search}` : null, key);
   // Keep the last results on screen while the next query loads.
   const [shown, setShown] = useState<{ items: Hit[]; loose?: boolean; has_more?: boolean } | null>(null);
   if (results.data && results.data !== shown) setShown(results.data);
@@ -160,7 +162,7 @@ function SearchView() {
             </Link>
             <div className="min-w-0">
               <h2 className="text-[15px] font-semibold leading-snug">
-                <Link href={`/v/${video.video_id}?t=${Math.floor(lines[0].start)}`} className="line-clamp-2 hover:underline">
+                <Link href={`/v/${video.video_id}?t=${Math.floor(lines[0].start)}`} className="line-clamp-2 py-0.5 hover:underline">
                   {video.title || "Untitled video"}
                 </Link>
               </h2>

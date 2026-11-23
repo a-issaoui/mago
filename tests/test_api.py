@@ -124,3 +124,20 @@ def test_long_lists_come_in_pages(client):
     assert (len(page1["items"]), page1["has_more"], len(page3["items"]), page3["has_more"]) == (10, True, 5, False)
     queue = client.get("/api/activity", params={"next_limit": 10, "next_offset": 20}).json()
     assert (queue["queued"], len(queue["up_next"])) == (25, 5)
+
+
+def test_revision_moves_on_real_changes_only(client):
+    read = lambda: client.get("/api/activity").json()["revision"]
+    start = read()
+    conn = db.connect()
+    db.set_runtime(conn, heartbeat=123)  # the worker's heartbeat is not a change worth a refresh
+    assert read() == start
+    source_id, video_id = seed()
+    after_seed = read()
+    assert after_seed > start
+    client.put("/api/settings", json={"youtube_delay_s": 7})
+    after_setting = read()
+    assert after_setting > after_seed
+    library.set_status(conn, video_id, "transcribing", progress=0.5)
+    assert read() > after_setting
+    conn.close()

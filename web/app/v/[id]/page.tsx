@@ -124,7 +124,7 @@ function VideoView() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const start = Math.max(0, Number(useSearchParams().get("t")) || 0);
-  const key = useLiveKey(1500);
+  const key = useLiveKey(800);
   const { data, error, reload } = useApi<Payload>(`/videos/${id}`, key);
   const player = useRef<PlayerHandle>(null);
   const playerBox = useRef<HTMLDivElement>(null);
@@ -209,7 +209,7 @@ function VideoView() {
     if (!follow || active < 0 || needle || Date.now() - lastManualScroll.current < 4000) return;
     const line = list.current?.querySelector<HTMLElement>(`[data-line="${active}"]`);
     if (!line) return;
-    const phone = window.matchMedia("(max-width: 1023px)").matches;
+    const phone = window.matchMedia("(max-width: 1279px)").matches;
     const top = Math.max((phone ? playerBox.current : toolbar.current)?.getBoundingClientRect().bottom ?? 0, 64) + 12;
     const rect = line.getBoundingClientRect();
     if (rect.top < top || rect.bottom > window.innerHeight - 110) {
@@ -231,7 +231,7 @@ function VideoView() {
       );
     }
     return (
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div className="skeleton aspect-video" />
         <div className="space-y-3">
           {Array.from({ length: 9 }, (_, index) => (
@@ -261,26 +261,26 @@ function VideoView() {
         current={video.title}
       />
 
-      <div className="grid gap-x-10 gap-y-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div className="grid gap-x-10 gap-y-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {/* On a phone this column dissolves, so the player can stick under the header while the transcript scrolls. */}
-        <div className="max-lg:contents lg:sticky lg:top-24 lg:self-start">
-          <div ref={playerBox} className="max-lg:sticky max-lg:top-14 max-lg:z-20 max-lg:-mx-4 max-lg:bg-night max-lg:px-4 max-lg:py-2">
+        <div className="max-xl:contents xl:sticky xl:top-24 xl:self-start">
+          <div ref={playerBox} className="max-xl:sticky max-xl:top-14 max-xl:z-20 max-xl:-mx-4 max-xl:bg-night max-xl:px-4 max-xl:py-2 sm:max-xl:-mx-6 sm:max-xl:px-6 lg:max-xl:top-16 lg:max-xl:-mx-10 lg:max-xl:px-10">
             {done ? (
               <Player ref={player} platform={video.platform} videoId={video.platform_video_id} shape={video.shape} start={start} title={video.title ?? "Video"} onTime={onTime} />
             ) : (
-              <Thumb path={video.thumb_path} blur={video.thumb_blur} shape={video.shape} size="lg" status={video.status} progress={video.progress} eager className={video.shape === "tall" ? "mx-auto max-h-[44dvh] lg:max-h-[70dvh]" : ""} />
+              <Thumb path={video.thumb_path} blur={video.thumb_blur} shape={video.shape} size="lg" status={video.status} progress={video.progress} eager className={video.shape === "tall" ? "mx-auto max-h-[44dvh] xl:max-h-[70dvh]" : ""} />
             )}
           </div>
           <div>
-            <h1 className="mt-1 text-xl font-semibold leading-snug [overflow-wrap:anywhere] sm:text-2xl lg:mt-4">{fullTitle(video)}</h1>
+            <h1 className="mt-1 text-xl font-semibold leading-snug [overflow-wrap:anywhere] sm:text-2xl xl:mt-4">{fullTitle(video)}</h1>
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mute">
               <PlatformMark platform={video.platform} className="size-4" />
               {inChannel ? (
-                <Link href={`/c/${video.source_id}`} className="font-medium text-ink hover:underline">
+                <Link href={`/c/${video.source_id}`} className="inline-flex min-h-6 items-center font-medium text-ink hover:underline">
                   {video.source_title}
                 </Link>
               ) : video.channel_url ? (
-                <a href={video.channel_url} target="_blank" rel="noopener noreferrer" className="font-medium text-ink hover:underline">
+                <a href={video.channel_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center font-medium text-ink hover:underline">
                   {video.channel_name || video.source_handle}
                 </a>
               ) : (
@@ -342,8 +342,8 @@ function VideoView() {
           </h2>
           {done ? (
             <>
-              <div ref={toolbar} className="z-10 -mx-1 flex flex-wrap items-center gap-2 bg-night/85 px-1 py-2 backdrop-blur-2xl lg:sticky lg:top-16">
-                <label className="relative block min-w-0 flex-1">
+              <div ref={toolbar} className="z-10 -mx-1 flex flex-wrap items-center gap-2 bg-night/85 px-1 py-2 backdrop-blur-2xl xl:sticky xl:top-16">
+                <label className="relative block min-w-40 flex-1">
                   <span className="sr-only">Find in this transcript</span>
                   <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-mute" />
                   <input
@@ -384,7 +384,7 @@ function VideoView() {
                   Follow the video
                 </label>
               </div>
-              <p className="mt-2 hidden items-center gap-x-3 gap-y-1 text-xs text-mute lg:flex lg:flex-wrap">
+              <p className="mt-2 hidden items-center gap-x-3 gap-y-1 text-xs text-mute xl:flex xl:flex-wrap">
                 <span className="flex items-center gap-1.5"><Kbd>K</Kbd> play or pause</span>
                 <span className="flex items-center gap-1.5"><Kbd>J</Kbd><Kbd>L</Kbd> back or forward 10 s</span>
                 <span className="flex items-center gap-1.5"><Kbd>C</Kbd> copy a link to this moment</span>

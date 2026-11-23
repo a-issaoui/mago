@@ -124,7 +124,7 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
   }, [platform, start]);
 
   // A portrait video would fill a phone screen; cap it so the transcript stays visible under the sticky player.
-  const box = shape === "tall" ? "aspect-[9/16] max-h-[40dvh] lg:max-h-[62dvh] mx-auto" : "aspect-video w-full";
+  const box = shape === "tall" ? "aspect-[9/16] max-h-[40dvh] xl:max-h-[62dvh] mx-auto" : "aspect-video w-full max-xl:mx-auto max-xl:max-w-[68dvh]";
   return (
     <div ref={holder} className={`overflow-hidden rounded-2xl bg-black [&_iframe]:size-full ${box}`}>
       {platform === "tiktok" && (

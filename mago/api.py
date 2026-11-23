@@ -402,6 +402,7 @@ def activity_snapshot(conn: sqlite3.Connection) -> dict:
         "ORDER BY transcribed_at DESC, id DESC LIMIT 3"
     )
     return {
+        "revision": conn.execute("SELECT n FROM revision WHERE id = 1").fetchone()[0],
         "mcp": mcp_status(conn),
         "finished": [dict(row) for row in finished],
         "paused": [name for name in db.get_settings(conn)["paused"].split(",") if name],
@@ -473,8 +474,8 @@ async def events():
                 elif idle >= 15:
                     idle = 0.0
                     yield ": keep-alive\n\n"
-                await asyncio.sleep(1)
-                idle += 1
+                await asyncio.sleep(0.4)
+                idle += 0.4
         finally:
             conn.close()
 

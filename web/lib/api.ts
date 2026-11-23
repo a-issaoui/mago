@@ -95,6 +95,7 @@ export type Hit = {
 export type McpStatus = { sessions: number; calls: number; last_tool: string | null; last_call_at: number | null; busy: boolean };
 
 export type Snapshot = {
+  revision: number;
   mcp: McpStatus;
   finished: { id: number; title: string | null; platform: Platform }[];
   paused: Platform[];

@@ -116,6 +116,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_video ON jobs(video_id)
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_source ON jobs(source_id)
     WHERE kind = 'list' AND state IN ('pending','running');
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- A counter bumped by every change to what the screens show (not by the worker's heartbeat), so the
+-- interface can refresh the moment something changes, whoever changed it.
+CREATE TABLE IF NOT EXISTS revision (id INTEGER PRIMARY KEY CHECK (id = 1), n INTEGER NOT NULL);
+INSERT OR IGNORE INTO revision(id, n) VALUES (1, 0);
+CREATE TRIGGER IF NOT EXISTS revision_sources_insert AFTER INSERT ON sources BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_sources_update AFTER UPDATE ON sources BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_sources_delete AFTER DELETE ON sources BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_videos_insert AFTER INSERT ON videos BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_videos_update AFTER UPDATE ON videos BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_videos_delete AFTER DELETE ON videos BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_settings_insert AFTER INSERT ON settings BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_settings_update AFTER UPDATE ON settings BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
+CREATE TRIGGER IF NOT EXISTS revision_settings_delete AFTER DELETE ON settings BEGIN UPDATE revision SET n = n + 1 WHERE id = 1; END;
 -- One row per running MCP server (each Claude session starts its own), so the interface can show
 -- whether Claude is connected and what it last asked for.
 CREATE TABLE IF NOT EXISTS mcp_sessions (

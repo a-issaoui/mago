@@ -37,7 +37,7 @@ function Row({ video, children }: { video: Video; children?: React.ReactNode }) 
         <Thumb path={video.thumb_path} blur={video.thumb_blur} shape="wide" />
       </Link>
       <div className="min-w-0 flex-1">
-        <Link href={`/v/${video.id}`} className="line-clamp-1 font-medium hover:underline">
+        <Link href={`/v/${video.id}`} className="line-clamp-1 py-0.5 font-medium hover:underline">
           {video.title || "Untitled video"}
         </Link>
         <p className="flex items-center gap-1.5 truncate text-sm text-mute">
@@ -67,7 +67,7 @@ function Section({ id, title, count, action, children }: { id: string; title: st
 export default function ActivityPage() {
   useTitle("Activity");
   const { snapshot, connected } = useLive();
-  const key = useLiveKey(1200);
+  const key = useLiveKey(500);
   const NEXT = 20;
   const LIST = 15;
   const [nextPage, setNextPage] = useState(1);

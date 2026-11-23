@@ -55,13 +55,19 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
 
 export const useLive = () => useContext(LiveContext);
 
-/** A refresh key that changes on queue events, but at most once per `ms`, so a
- *  busy queue doesn't refetch a big grid every second. */
-export function useLiveKey(ms = 2500): number {
+/** A refresh key for screens: it changes as soon as anything in the library changes (a video
+ *  finishing, a channel added from another tab or by Claude, a setting), but at most once per
+ *  `ms`, so a busy queue doesn't refetch a long list many times a second. */
+export function useLiveKey(ms = 500): number {
   const { tick } = useLive();
   const [key, setKey] = useState(0);
+  const last = useRef(0);
   useEffect(() => {
-    const timer = setTimeout(() => setKey(tick), ms);
+    const wait = Math.max(0, last.current + ms - Date.now());
+    const timer = setTimeout(() => {
+      last.current = Date.now();
+      setKey(tick);
+    }, wait);
     return () => clearTimeout(timer);
   }, [tick, ms]);
   return key;

@@ -8,7 +8,7 @@ export function Breadcrumb({ trail, current }: { trail: { href: string; label: s
       {trail.map((step, index) => (
         <span key={step.href} className="flex min-w-0 items-center gap-1.5">
           {index > 0 && <ChevronRightIcon className="size-3.5 shrink-0" />}
-          <Link href={step.href} className="truncate hover:text-ink">
+          <Link href={step.href} className="flex min-h-6 items-center truncate hover:text-ink">
             {step.label}
           </Link>
         </span>

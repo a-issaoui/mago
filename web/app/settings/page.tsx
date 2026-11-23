@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useTitle } from "@/hooks/use-title";
 import { act } from "@/lib/act";
-import { useLive } from "@/components/live";
+import { useLive, useLiveKey } from "@/components/live";
 import { ago, api, mcpLine, useApi } from "@/lib/api";
 
 type Settings = {
@@ -74,8 +74,9 @@ const numberField = "field tabular w-28 px-4";
 
 export default function SettingsPage() {
   useTitle("Settings");
-  const settings = useApi<Settings>("/settings");
-  const system = useApi<System>("/system");
+  const key = useLiveKey(); // a setting changed by Claude or in another tab shows up here too
+  const settings = useApi<Settings>("/settings", key);
+  const system = useApi<System>("/system", key);
   const [updating, setUpdating] = useState(false);
   const { snapshot } = useLive();
   const mcp = snapshot?.mcp;
