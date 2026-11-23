@@ -322,7 +322,9 @@ def search(
     offset: int = Query(default=0, ge=0),
     conn: sqlite3.Connection = Conn,
 ):
-    hits = library.search(conn, q, platform, source_id, limit, offset)
+    hits = library.search(conn, q, platform, source_id, limit + 1, offset)  # one extra: is there a next page?
+    has_more = len(hits) > limit
+    hits = hits[:limit]
     loose = False
     if not hits and offset == 0:
         # Nothing in a single caption line: look in passages (a phrase can run across lines).
@@ -335,7 +337,7 @@ def search(
         blurs = {row["id"]: row for row in rows}
     for hit in hits:
         hit["thumb_blur"], hit["shape"] = blurs[hit["video_id"]]["thumb_blur"], blurs[hit["video_id"]]["shape"]
-    return {"query": q, "items": hits, "loose": loose}
+    return {"query": q, "items": hits, "loose": loose, "has_more": has_more}
 
 
 def activity_snapshot(conn: sqlite3.Connection) -> dict:
@@ -377,16 +379,17 @@ def activity_snapshot(conn: sqlite3.Connection) -> dict:
 
 
 @app.get("/api/activity")
-def activity(conn: sqlite3.Connection = Conn):
+def activity(next_offset: int = Query(default=0, ge=0), next_limit: int = Query(default=20, ge=1, le=100),
+             conn: sqlite3.Connection = Conn):
     snapshot = activity_snapshot(conn)
     up_next = conn.execute(
         f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title FROM jobs j JOIN videos v ON v.id = j.video_id "
         "JOIN sources s ON s.id = v.source_id WHERE j.state = 'pending' AND j.kind = 'transcribe' "
-        "ORDER BY j.priority DESC, j.id LIMIT 30"
+        "ORDER BY j.priority DESC, j.id LIMIT ? OFFSET ?", (next_limit, next_offset),
     )
     failed = conn.execute(
         f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title FROM videos v JOIN sources s ON s.id = v.source_id "
-        "WHERE v.status IN ('failed','skipped') ORDER BY v.id DESC LIMIT 100"
+        "WHERE v.status IN ('failed','skipped') ORDER BY v.id DESC LIMIT 2000"
     )
     failed_sources = conn.execute(
         "SELECT s.id, s.title, s.handle, s.url, j.log AS error FROM sources s JOIN jobs j ON j.id = "

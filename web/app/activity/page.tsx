@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PauseIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
+import { Pager, pageOf } from "@/components/pager";
 import { Legend, Progress } from "@/components/progress";
 import { Thumb } from "@/components/thumb";
 import { Button } from "@/components/ui/button";
@@ -66,7 +67,15 @@ export default function ActivityPage() {
   useTitle("Activity");
   const { snapshot, connected } = useLive();
   const key = useLiveKey(1200);
-  const { data, error, reload } = useApi<Activity>("/activity", key);
+  const NEXT = 20;
+  const LIST = 15;
+  const [nextPage, setNextPage] = useState(1);
+  const [failedPage, setFailedPage] = useState(1);
+  const [skippedPage, setSkippedPage] = useState(1);
+  const fresh = useApi<Activity>(`/activity?next_limit=${NEXT}&next_offset=${(nextPage - 1) * NEXT}`, key);
+  const [data, setData] = useState<Activity | undefined>();
+  if (fresh.data && fresh.data !== data) setData(fresh.data);
+  const { error, reload } = fresh;
   const now = useNow();
   const active = snapshot?.active ?? data?.active ?? [];
   const listing = snapshot?.listing ?? data?.listing ?? [];
@@ -221,7 +230,7 @@ export default function ActivityPage() {
               </Row>
             ))}
           </ul>
-          {data && queued > data.up_next.length && <p className="tabular mt-2 text-sm text-mute">{`and ${queued - data.up_next.length} more`}</p>}
+          <Pager label="Up next" className="mt-5" page={nextPage} pageCount={Math.ceil(queued / NEXT)} onChange={setNextPage} />
         </Section>
       )}
 
@@ -238,7 +247,7 @@ export default function ActivityPage() {
           }
         >
           <ul className="divide-y divide-line">
-            {failed.map((video) => (
+            {pageOf(failed, failedPage, LIST).items.map((video) => (
               <Row key={video.id} video={video}>
                 <div className="mt-1 flex items-start justify-between gap-3">
                   <p className="line-clamp-2 text-xs text-amber">{video.error}</p>
@@ -249,6 +258,7 @@ export default function ActivityPage() {
               </Row>
             ))}
           </ul>
+          <Pager label="Failed videos" className="mt-5" page={Math.min(failedPage, pageOf(failed, failedPage, LIST).pageCount)} pageCount={pageOf(failed, failedPage, LIST).pageCount} onChange={setFailedPage} />
         </Section>
       )}
 
@@ -277,12 +287,13 @@ export default function ActivityPage() {
         <Section id="skipped-heading" title="Left out" count={skipped.length}>
           <p className="mt-1 text-sm text-mute">Private, removed or blocked videos, and repeats of an earlier upload. Mago doesn&apos;t keep retrying these.</p>
           <ul className="divide-y divide-line">
-            {skipped.map((video) => (
+            {pageOf(skipped, skippedPage, LIST).items.map((video) => (
               <Row key={video.id} video={video}>
                 <p className="mt-1 line-clamp-2 text-xs text-mute">{video.error}</p>
               </Row>
             ))}
           </ul>
+          <Pager label="Left out videos" className="mt-5" page={Math.min(skippedPage, pageOf(skipped, skippedPage, LIST).pageCount)} pageCount={pageOf(skipped, skippedPage, LIST).pageCount} onChange={setSkippedPage} />
         </Section>
       )}
     </div>

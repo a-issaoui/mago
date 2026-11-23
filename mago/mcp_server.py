@@ -430,7 +430,7 @@ def queue_status() -> dict:
 
     conn = db.connect()
     try:
-        data = api_activity(conn)
+        data = api_activity(next_offset=0, next_limit=20, conn=conn)
         now = time.time()
         return {
             "worker_running": data["worker"]["alive"],

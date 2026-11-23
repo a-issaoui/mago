@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeftIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, MoreHorizontalIcon, RefreshCwIcon, RotateCcwIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Choice } from "@/components/choice";
 import { PlatformMark } from "@/components/icons";
+import { Pager } from "@/components/pager";
 import { useLiveKey } from "@/components/live";
 import { Pills } from "@/components/pills";
 import { Legend, Progress } from "@/components/progress";
@@ -37,21 +38,24 @@ const EXPORTS = [
   { format: "zip", label: "Zip: Markdown and SRT per video" },
 ];
 
-const PAGE = 60;
+const PAGE = 48;
 
-export default function ChannelPage() {
+function ChannelView() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const key = useLiveKey();
   const [status, setStatus] = useState<Filter>("");
   const [sort, setSort] = useState("newest");
   const [query, setQuery] = useState("");
-  const [limit, setLimit] = useState(PAGE);
   const [removing, setRemoving] = useState(false);
-  const sentinel = useRef<HTMLDivElement>(null);
+  const page = Math.max(1, Number(useSearchParams().get("page")) || 1);
+  const setPage = (next: number, scroll = true) => {
+    router.replace(next > 1 ? `/c/${id}?page=${next}` : `/c/${id}`, { scroll: false });
+    if (scroll) document.getElementById("videos-top")?.scrollIntoView({ block: "start" });
+  };
 
   const source = useApi<Source>(`/sources/${id}`, key);
-  const params = new URLSearchParams({ source_id: id, sort, limit: String(limit) });
+  const params = new URLSearchParams({ source_id: id, sort, limit: String(PAGE), offset: String((page - 1) * PAGE) });
   if (status) params.set("status", status);
   if (query.trim()) params.set("q", query.trim());
   const videos = useApi<{ total: number; items: Video[] }>(`/videos?${params}`, key);
@@ -61,21 +65,7 @@ export default function ChannelPage() {
 
   const data = source.data;
   useTitle(data?.title || data?.handle);
-  const hasMore = Boolean(shown && shown.total > shown.items.length);
-  const shownCount = shown?.items.length ?? 0;
-
-  useEffect(() => {
-    const node = sentinel.current;
-    if (!node || !hasMore) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) setLimit((current) => current + PAGE);
-      },
-      { rootMargin: "600px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasMore, shownCount]);
+  const pageCount = shown ? Math.max(1, Math.ceil(shown.total / PAGE)) : 1;
 
   if (source.error) {
     return (
@@ -94,7 +84,7 @@ export default function ChannelPage() {
   const working = data ? Math.max(data.videos_total - data.videos_done - data.videos_failed, 0) : 0;
   const change = <T,>(setter: (value: T) => void) => (value: T) => {
     setter(value);
-    setLimit(PAGE);
+    if (page !== 1) setPage(1, false);
   };
 
   function copyAll() {
@@ -183,6 +173,7 @@ export default function ChannelPage() {
         )}
       </header>
 
+      <div id="videos-top" className="scroll-mt-14" />
       <div className="sticky top-14 z-20 -mx-4 mb-6 mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 bg-night/90 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6">
         <Pills<Filter>
           label="Show"
@@ -224,15 +215,15 @@ export default function ChannelPage() {
         </div>
       ) : (
         <>
-          <Sheet videos={shown.items} />
-          {hasMore && (
-            <div ref={sentinel} className="mt-8" aria-hidden>
-              <SheetSkeleton count={6} tall={data?.platform === "tiktok"} />
-            </div>
+          <div className={`transition-opacity ${videos.loading ? "opacity-60" : ""}`}>
+            <Sheet videos={shown.items} />
+          </div>
+          <Pager label="Videos" className="mt-10" page={page} pageCount={pageCount} onChange={setPage} />
+          {shown.total > PAGE && (
+            <p className="tabular mt-3 text-center text-sm text-mute" aria-live="polite">
+              {`${(page - 1) * PAGE + 1} to ${Math.min(page * PAGE, shown.total)} of ${shown.total} videos`}
+            </p>
           )}
-          <p className="tabular mt-10 text-center text-sm text-mute" aria-live="polite">
-            {hasMore ? `Showing ${shown.items.length} of ${shown.total}` : shown.total > PAGE ? `All ${shown.total} videos` : ""}
-          </p>
         </>
       )}
 
@@ -259,5 +250,13 @@ export default function ChannelPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+export default function ChannelPage() {
+  return (
+    <Suspense>
+      <ChannelView />
+    </Suspense>
   );
 }

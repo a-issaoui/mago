@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
+import { Pager } from "@/components/pager";
 import { PasteBox } from "@/components/paste-box";
 import { Pills } from "@/components/pills";
 import { SourceCard } from "@/components/source-card";
@@ -24,7 +25,12 @@ function Library() {
   const sources = useApi<Source[]>("/sources", key);
   const recent = useApi<Page>(`/videos?sort=recent&limit=24${filter}`, key);
   const working = useApi<Page>(`/videos?status=working&limit=12${filter}`, key);
-  const singles = useApi<Page>(`/videos?single=true&limit=36${filter}`, key);
+  const SINGLES = 24;
+  const [singlesPage, setSinglesPage] = useState(1);
+  const singlesTop = useRef<HTMLElement>(null);
+  const singles = useApi<Page>(`/videos?single=true&limit=${SINGLES}&offset=${(singlesPage - 1) * SINGLES}${filter}`, key);
+  const [singlesShown, setSinglesShown] = useState<Page | null>(null);
+  if (singles.data && singles.data !== singlesShown) setSinglesShown(singles.data);
 
   const channels = sources.data?.filter((source) => source.kind !== "video" && (!platform || source.platform === platform)) ?? [];
   const empty = sources.data?.length === 0;
@@ -36,7 +42,7 @@ function Library() {
   };
   // With a small library the newest transcripts are the single videos listed below: don't show them twice.
   const singleIds = new Set(singles.data?.items.map((video) => video.id));
-  const recentIsRepeat = Boolean(recent.data && singles.data && recent.data.items.every((video) => singleIds.has(video.id)));
+  const recentIsRepeat = Boolean(singlesPage === 1 && recent.data && singles.data && recent.data.items.every((video) => singleIds.has(video.id)));
   const nothingHere = !empty && sources.data && channels.length === 0 && singles.data?.total === 0;
   // The big headline is for the first visit; once there is a library, the library is the page.
   const firstVisit = empty || (!sources.data && !sources.error);
@@ -63,7 +69,10 @@ function Library() {
           <Pills
             label="Show"
             value={platform}
-            onChange={(value) => router.replace(value ? `/?platform=${value}` : "/", { scroll: false })}
+            onChange={(value) => {
+              setSinglesPage(1);
+              router.replace(value ? `/?platform=${value}` : "/", { scroll: false });
+            }}
             options={[
               { value: "", label: "Everything" },
               { value: "youtube", label: "YouTube", count: snapshot?.platforms.youtube.total, icon: <PlatformMark platform="youtube" className="size-[18px]" /> },
@@ -118,13 +127,23 @@ function Library() {
         </section>
       )}
 
-      {singles.data && singles.data.items.length > 0 && (
-        <section aria-labelledby="singles-heading">
+      {singlesShown && singlesShown.items.length > 0 && (
+        <section aria-labelledby="singles-heading" ref={singlesTop} className="scroll-mt-20">
           <h2 id="singles-heading" className="text-xl font-semibold">
-            Single videos <span className="tabular font-normal text-mute">{singles.data.total}</span>
+            Single videos <span className="tabular font-normal text-mute">{singlesShown.total}</span>
           </h2>
           <p className="mb-4 mt-1 text-sm text-mute">Added on their own, without the rest of their channel.</p>
-          <Sheet videos={singles.data.items} showSource />
+          <Sheet videos={singlesShown.items} showSource />
+          <Pager
+            label="Single videos"
+            className="mt-8"
+            page={singlesPage}
+            pageCount={Math.ceil(singlesShown.total / SINGLES)}
+            onChange={(next) => {
+              setSinglesPage(next);
+              singlesTop.current?.scrollIntoView({ block: "start" });
+            }}
+          />
         </section>
       )}
 

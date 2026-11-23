@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { SearchIcon } from "lucide-react";
 import { Choice } from "@/components/choice";
 import { PlatformMark } from "@/components/icons";
+import { Pager } from "@/components/pager";
 import { Pills } from "@/components/pills";
 import { Thumb } from "@/components/thumb";
 import { useTitle } from "@/hooks/use-title";
@@ -40,6 +41,8 @@ function SearchView() {
   const [query, setQuery] = useState(text);
   const platform = params.get("platform") ?? "";
   const sourceId = params.get("source") ?? "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const PAGE = 40;
   useTitle(query ? `"${query}"` : "Search");
 
   useEffect(() => {
@@ -51,6 +54,7 @@ function SearchView() {
     const next = new URLSearchParams(params);
     if (value) next.set(name, value);
     else next.delete(name);
+    if (name !== "page") next.delete("page"); // a new query or filter starts at page 1
     router.replace(`/search?${next}`, { scroll: false });
   }
   useEffect(() => {
@@ -58,12 +62,12 @@ function SearchView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only the typed query drives the URL
   }, [query]);
 
-  const search = new URLSearchParams({ q: query, limit: "60" });
+  const search = new URLSearchParams({ q: query, limit: String(PAGE), offset: String((page - 1) * PAGE) });
   if (platform) search.set("platform", platform);
   if (sourceId) search.set("source_id", sourceId);
-  const results = useApi<{ items: Hit[]; loose?: boolean }>(query.length >= 2 ? `/search?${search}` : null);
+  const results = useApi<{ items: Hit[]; loose?: boolean; has_more?: boolean }>(query.length >= 2 ? `/search?${search}` : null);
   // Keep the last results on screen while the next query loads.
-  const [shown, setShown] = useState<{ items: Hit[]; loose?: boolean } | null>(null);
+  const [shown, setShown] = useState<{ items: Hit[]; loose?: boolean; has_more?: boolean } | null>(null);
   if (results.data && results.data !== shown) setShown(results.data);
   const visible = query.length >= 2 ? shown : null;
   const sources = useApi<Source[]>("/sources");
@@ -74,7 +78,9 @@ function SearchView() {
     ? ""
     : groups.length === 0
       ? "No results"
-      : `${lineCount}${lineCount === 60 ? "+" : ""} ${lineCount === 1 ? "line" : "lines"} in ${groups.length} ${groups.length === 1 ? "video" : "videos"}`;
+      : page > 1 || visible.has_more
+        ? `Lines ${(page - 1) * PAGE + 1} to ${(page - 1) * PAGE + lineCount}, in ${groups.length} ${groups.length === 1 ? "video" : "videos"}`
+        : `${lineCount} ${lineCount === 1 ? "line" : "lines"} in ${groups.length} ${groups.length === 1 ? "video" : "videos"}`;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -178,6 +184,18 @@ function SearchView() {
           </li>
         ))}
       </ol>
+      {visible && (
+        <Pager
+          label="Search results"
+          className="mt-10"
+          page={page}
+          hasNext={Boolean(visible.has_more)}
+          onChange={(next) => {
+            setParam("page", next > 1 ? String(next) : "");
+            window.scrollTo({ top: 0 });
+          }}
+        />
+      )}
     </div>
   );
 }

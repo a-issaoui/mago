@@ -103,3 +103,24 @@ def test_pause_and_channel_export(client):
     import io, zipfile
     names = zipfile.ZipFile(io.BytesIO(archive.content)).namelist()
     assert len(names) == 2 and all(name.startswith("jawed/") and ".." not in name for name in names)
+
+
+def test_long_lists_come_in_pages(client):
+    conn = db.connect()
+    source_id = library.add_source(conn, "https://www.youtube.com/@jawed")
+    for index in range(25):
+        video_id, _ = library.upsert_video(conn, source_id, "youtube", {
+            "platform_video_id": f"vid{index:08d}", "url": f"https://www.youtube.com/watch?v=vid{index:08d}", "title": f"Video {index}"})
+        library.save_transcript(conn, video_id, [{"start": float(index), "end": index + 1.0, "text": f"walrus number {index}"}], "captions", "en")
+        from mago import jobs
+        jobs.enqueue_transcribe(conn, video_id)
+    conn.close()
+    first = client.get("/api/videos", params={"source_id": source_id, "limit": 10}).json()
+    last = client.get("/api/videos", params={"source_id": source_id, "limit": 10, "offset": 20}).json()
+    assert (first["total"], len(first["items"]), len(last["items"])) == (25, 10, 5)
+    assert not {v["id"] for v in first["items"]} & {v["id"] for v in last["items"]}
+    page1 = client.get("/api/search", params={"q": "walrus", "limit": 10, "include": 1}).json()
+    page3 = client.get("/api/search", params={"q": "walrus", "limit": 10, "offset": 20}).json()
+    assert (len(page1["items"]), page1["has_more"], len(page3["items"]), page3["has_more"]) == (10, True, 5, False)
+    queue = client.get("/api/activity", params={"next_limit": 10, "next_offset": 20}).json()
+    assert (queue["queued"], len(queue["up_next"])) == (25, 5)
