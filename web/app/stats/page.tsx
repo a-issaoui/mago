@@ -62,7 +62,7 @@ export default function StatsPage() {
           </div>
 
           <div className="grid items-start gap-6 xl:grid-cols-2">
-            <section aria-labelledby="channels-heading" className="panel p-5 sm:p-6">
+            <section aria-labelledby="channels-heading" className="panel min-w-0 p-5 sm:p-6">
               <h2 id="channels-heading" className="text-lg font-semibold tracking-tight">
                 Channels
               </h2>
@@ -70,8 +70,8 @@ export default function StatsPage() {
               <ul className="mt-4 space-y-4">
                 {data.channels.map((channel) => (
                   <li key={channel.id}>
-                    <div className="flex items-baseline justify-between gap-3 text-sm">
-                      <Link href={`/c/${channel.id}`} className="flex min-h-6 min-w-0 items-center gap-2 font-medium hover:underline">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                      <Link href={`/c/${channel.id}`} className="flex min-h-6 min-w-0 max-w-full items-center gap-2 font-medium hover:underline">
                         <PlatformMark platform={channel.platform} className="size-4 shrink-0" />
                         <span className="truncate">{channel.title || channel.handle}</span>
                       </Link>
@@ -85,7 +85,7 @@ export default function StatsPage() {
               </ul>
             </section>
 
-            <section aria-labelledby="months-heading" className="panel p-5 sm:p-6">
+            <section aria-labelledby="months-heading" className="panel min-w-0 p-5 sm:p-6">
               <h2 id="months-heading" className="text-lg font-semibold tracking-tight">
                 When the videos were published
               </h2>
