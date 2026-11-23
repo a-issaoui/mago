@@ -184,3 +184,41 @@ def test_whisper_hint_carries_the_names():
                          "description": "#fyp see https://example.com/x for more"})
     assert "Chef Moe" in hint and "http" not in hint and "#" not in hint and "@" not in hint
     assert whisper_hint({"title": None, "description": ""}) is None
+
+
+def test_search_by_meaning_blends_with_words(conn, monkeypatch):
+    import numpy as np
+
+    from mago import meaning
+
+    # A stand-in for the model: one direction per subject.
+    subjects = {"elephant": 0, "trunk": 0, "zoo": 0, "animal": 0, "google": 1, "rank": 1, "maps": 1, "search": 1}
+
+    def fake_embed(texts):
+        vectors = np.zeros((len(texts), 384), dtype=np.float32)
+        for row, text in enumerate(texts):
+            for word, axis in subjects.items():
+                if word in text.lower():
+                    vectors[row, axis] += 1
+            if not vectors[row].any():
+                vectors[row, 5] = 1
+            vectors[row] /= np.linalg.norm(vectors[row])
+        return vectors
+
+    monkeypatch.setattr(meaning, "embed", fake_embed)
+    monkeypatch.setattr(meaning, "_matrix", {"key": None, "ids": None, "vectors": None})
+    _, zoo = add_video(conn)
+    library.save_transcript(conn, zoo, [{"start": 0, "end": 2, "text": "The elephants have really long trunks."}], "captions", "en")
+    source_id = library.add_source(conn, "https://www.tiktok.com/@gobig")
+    seo, _ = library.upsert_video(conn, source_id, "tiktok", {"platform_video_id": "9", "url": "u", "title": "Local tips"})
+    library.save_transcript(conn, seo, [{"start": 0, "end": 2, "text": "Show up higher on Google Maps with one change."}], "whisper", "en")
+    assert meaning.coverage(conn) == {"passages": 2, "indexed": 0}
+    assert meaning.search(conn, "how do I rank in search")  == []  # nothing indexed, and no word matches
+    assert meaning.index_missing(conn) == 2 and meaning.index_missing(conn) == 0
+    hit = meaning.search(conn, "how do I rank in search")[0]  # none of these words are in the passage
+    assert (hit["video_id"], hit["match"]) == (seo, "meaning")
+    both = meaning.search(conn, "elephants at the zoo")[0]
+    assert (both["video_id"], both["match"]) == (zoo, "words and meaning")
+    assert meaning.search(conn, "rank in search", platform="youtube") == []
+    library.save_transcript(conn, seo, [{"start": 0, "end": 1, "text": "Completely new words."}], "whisper", "en")
+    assert meaning.coverage(conn)["indexed"] == 1  # re-transcribing drops the old vectors

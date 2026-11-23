@@ -44,6 +44,7 @@ function SearchView() {
   const platform = params.get("platform") ?? "";
   const sourceId = params.get("source") ?? "";
   const page = Math.max(1, Number(params.get("page")) || 1);
+  const mode = params.get("mode") === "meaning" ? "meaning" : "words";
   const PAGE = 40;
   useTitle(query ? `"${query}"` : "Search");
 
@@ -65,12 +66,13 @@ function SearchView() {
   }, [query]);
 
   const search = new URLSearchParams({ q: query, limit: String(PAGE), offset: String((page - 1) * PAGE) });
+  if (mode === "meaning") search.set("mode", "meaning");
   if (platform) search.set("platform", platform);
   if (sourceId) search.set("source_id", sourceId);
   const key = useLiveKey(1500); // newly transcribed videos join the results without a reload
-  const results = useApi<{ items: Hit[]; loose?: boolean; has_more?: boolean }>(query.length >= 2 ? `/search?${search}` : null, key);
+  const results = useApi<{ items: Hit[]; loose?: boolean; has_more?: boolean; index?: { passages: number; indexed: number } }>(query.length >= 2 ? `/search?${search}` : null, key);
   // Keep the last results on screen while the next query loads.
-  const [shown, setShown] = useState<{ items: Hit[]; loose?: boolean; has_more?: boolean } | null>(null);
+  const [shown, setShown] = useState<{ items: Hit[]; loose?: boolean; has_more?: boolean; index?: { passages: number; indexed: number } } | null>(null);
   if (results.data && results.data !== shown) setShown(results.data);
   const visible = query.length >= 2 ? shown : null;
   const sources = useApi<Source[]>("/sources");
@@ -87,7 +89,7 @@ function SearchView() {
 
   return (
     <div>
-      <PageHeader title="Search" note="Find the moment something was said. Each result opens the video at that second." />
+      <PageHeader title="Search" note="Find the moment something was said. Each result opens the video at that second. By meaning also finds passages that say it in other words." />
       <label className="flex h-14 items-center gap-3 rounded-[22px] border border-line-strong bg-surface px-5 shadow-[var(--shadow-panel)] transition-[border-color,box-shadow] focus-within:border-murex focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--murex)_22%,transparent)] sm:h-16 sm:px-6">
         <SearchIcon className="size-5 shrink-0 text-mute" />
         <span className="sr-only">Search everything that was said</span>
@@ -101,6 +103,16 @@ function SearchView() {
       </label>
 
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Pills
+          label="How to match"
+          value={mode}
+          onChange={(value) => setParam("mode", value === "meaning" ? "meaning" : "")}
+          options={[
+            { value: "words", label: "Exact words" },
+            { value: "meaning", label: "By meaning" },
+          ]}
+        />
+        <span className="hidden h-6 w-px bg-line sm:block" aria-hidden />
         <Pills
           label="Platform"
           value={platform}
@@ -152,6 +164,9 @@ function SearchView() {
           <p className="mt-1 text-sm text-mute">Not in the videos transcribed so far. Try fewer words, or check the filters above.</p>
         </div>
       )}
+      {mode === "meaning" && visible?.index && visible.index.indexed < visible.index.passages && (
+        <p className="mt-2 text-sm text-amber">{`Still preparing search by meaning: ${visible.index.indexed} of ${visible.index.passages} passages are ready, so some results are missing for now.`}</p>
+      )}
       {groups.length > 0 && visible?.loose && <p className="mt-2 text-sm text-amber">No line has all of these words. Showing the closest passages instead.</p>}
 
       <ol className={`mt-5 space-y-9 transition-opacity ${results.loading ? "opacity-60" : ""}`}>
@@ -177,6 +192,7 @@ function SearchView() {
                       <span className="time text-xs font-semibold text-murex">{clock(line.start)}</span>
                       <span className="font-serif text-[16px] leading-relaxed">
                         <Snippet text={line.snippet} />
+                        {line.match === "meaning" && <span className="ml-2 whitespace-nowrap rounded-full border border-line-strong px-2 py-0.5 font-sans text-[11px] text-mute">similar meaning</span>}
                       </span>
                     </Link>
                   </li>

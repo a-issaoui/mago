@@ -13,7 +13,7 @@ import sys
 import sqlite3
 import time
 
-from . import config, db, fetch, jobs, library, pipeline, thumbs
+from . import config, db, fetch, jobs, library, meaning, pipeline, thumbs
 from .whisper_engine import Engine
 
 log = logging.getLogger("mago.worker")
@@ -172,7 +172,14 @@ class Worker:
                 if queued:
                     log.info("scheduled re-sync: %d channels queued", queued)
             if not self.step():
-                self._sleep(1.0)
+                # Nothing to transcribe: use the quiet time to index passages for search by meaning.
+                try:
+                    indexed = meaning.index_missing(self.conn)
+                except Exception:  # noqa: BLE001 - search by meaning is an extra; never stop the worker for it
+                    log.exception("meaning index failed")
+                    indexed = 0
+                if not indexed:
+                    self._sleep(1.0)
 
 
 def main() -> None:

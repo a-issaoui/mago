@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "yt-dlp", "yt-dlp-ejs", "faster-whisper", "av<19",  # faster-whisper 1.2.1 breaks on av 19
     "nvidia-cublas-cu12", "nvidia-cudnn-cu12",
-    "fastapi", "uvicorn[standard]", "pillow", "mcp", "httpx",
+    "fastapi", "uvicorn[standard]", "pillow", "mcp", "httpx", "fastembed",
 ]
 
 [dependency-groups]

@@ -22,7 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, export, fetch, jobs, library
+from . import config, db, export, fetch, jobs, library, meaning
 from .links import UnsupportedLink, detect
 
 config.ensure_dirs()
@@ -547,8 +547,14 @@ def search(
     source_id: int | None = None,
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    mode: Literal["words", "meaning"] = "words",
+    published_after: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    include_duplicates: bool = False,
     conn: sqlite3.Connection = Conn,
 ):
+    if mode == "meaning":
+        hits = meaning.search(conn, q, platform, source_id, published_after, limit=limit, include_duplicates=include_duplicates)
+        return {"query": q, "items": hits, "loose": False, "has_more": False, "index": meaning.coverage(conn)}
     hits = library.search(conn, q, platform, source_id, limit + 1, offset)  # one extra: is there a next page?
     has_more = len(hits) > limit
     hits = hits[:limit]
@@ -719,7 +725,7 @@ def write_settings(body: SettingsBody, conn: sqlite3.Connection = Conn):
 def system(conn: sqlite3.Connection = Conn):
     from .whisper_engine import free_vram_mb, gpu_lock_busy
 
-    return {"ytdlp_version": fetch.ytdlp_installed_version(), "gpu_free_mb": free_vram_mb(),
+    return {"meaning_index": meaning.coverage(conn), "ytdlp_version": fetch.ytdlp_installed_version(), "gpu_free_mb": free_vram_mb(),
             "gpu_lock_busy": gpu_lock_busy(), **activity_snapshot(conn)["worker"]}
 
 

@@ -101,6 +101,7 @@ export type Hit = {
   source_title: string | null;
   start: number;
   snippet: string;
+  match?: "words" | "meaning" | "words and meaning" | "all words" | "some words";
 };
 
 export type McpStatus = { sessions: number; calls: number; last_tool: string | null; last_call_at: number | null; busy: boolean };

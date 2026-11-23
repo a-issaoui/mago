@@ -90,6 +90,11 @@ END;
 CREATE TRIGGER IF NOT EXISTS passages_ad AFTER DELETE ON passages BEGIN
     INSERT INTO passages_fts(passages_fts, rowid, title, text) VALUES ('delete', old.id, old.title, old.text);
 END;
+-- One vector per passage, for search by meaning (float16, 384 numbers).
+CREATE TABLE IF NOT EXISTS passage_vectors (
+    passage_id INTEGER PRIMARY KEY REFERENCES passages(id) ON DELETE CASCADE,
+    vector BLOB NOT NULL
+);
 -- A sample of each transcript's word sequences, to spot the same content under another video id.
 CREATE TABLE IF NOT EXISTS fingerprints (
     video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,

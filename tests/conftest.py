@@ -3,6 +3,7 @@ import tempfile
 
 # Must be set before mago.config is imported: tests never touch the real library.
 os.environ["MAGO_DATA"] = tempfile.mkdtemp(prefix="mago-test-")
+os.environ["MAGO_API"] = "http://127.0.0.1:9"  # tests never talk to the real, running Mago
 
 import pytest  # noqa: E402
 

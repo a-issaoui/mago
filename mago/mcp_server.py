@@ -39,6 +39,23 @@ server = MCPServer(
 )
 
 MAX_CHARS = 60_000
+API_URL = os.environ.get("MAGO_API", "http://127.0.0.1:8010")
+
+
+def _meaning_hits(query, platform, source_id, published_after, limit, include_duplicates) -> list[dict] | None:
+    """Ask the running api for a meaning search (it holds the model, so Claude sessions don't each
+    load 240 MB). None when the api isn't reachable."""
+    import json
+    import urllib.parse
+    import urllib.request
+
+    params = {"q": query[:300], "mode": "meaning", "limit": limit, "include_duplicates": str(include_duplicates).lower()}
+    params.update({key: value for key, value in (("platform", platform), ("source_id", source_id), ("published_after", published_after)) if value})
+    try:
+        with urllib.request.urlopen(f"{API_URL}/api/search?{urllib.parse.urlencode(params)}", timeout=60) as response:  # noqa: S310 - local api
+            return json.load(response)["items"]
+    except Exception:  # noqa: BLE001 - api down or slow: the caller falls back to words
+        return None
 
 
 def _note(tool_name: str | None = None) -> None:
@@ -163,7 +180,7 @@ def _blockers(conn, platform: str) -> list[str]:
 
 @tool
 def search(query: str, platform: str | None = None, source: str | None = None, published_after: str | None = None,
-           limit: int = 12, include_duplicates: bool = False) -> dict:
+           limit: int = 12, include_duplicates: bool = False, by_meaning: bool = True) -> dict:
     """Search what was said across every transcript in the library.
 
     Searches passages (a few sentences each) and the video title. It first requires every word; if
@@ -178,13 +195,17 @@ def search(query: str, platform: str | None = None, source: str | None = None, p
         published_after: Optional ISO date (YYYY-MM-DD) to leave out older videos.
         limit: Maximum hits (1 to 30).
         include_duplicates: True to also search videos marked as repeats or clips of another video.
+        by_meaning: Also find passages that say it in other words (needs Mago's api process to be
+            running; falls back to words alone if it isn't). Set False for exact-term lookups.
     """
     if platform not in (None, "youtube", "tiktok"):
         raise ValueError('platform must be "youtube" or "tiktok"')
     conn = db.connect()
     try:
         source_id = _find_source(conn, source)["id"] if source else None
-        hits = library.search_passages(conn, query, platform, source_id, published_after, max(1, min(limit, 30)),
+        hits = _meaning_hits(query, platform, source_id, published_after, max(1, min(limit, 30)), include_duplicates) if by_meaning else None
+        if hits is None:
+            hits = library.search_passages(conn, query, platform, source_id, published_after, max(1, min(limit, 30)),
                                        include_duplicates=include_duplicates)
         if not hits:
             return {"query": query, "hits": [], "notice": "Nothing in the library matches. Do not guess what was said; try other words, or check list_sources."}
