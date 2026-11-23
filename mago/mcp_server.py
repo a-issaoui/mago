@@ -352,6 +352,7 @@ def list_videos(source: str | None = None, status: Literal["all", "done", "worki
 @tool
 def list_collections(collection: str | None = None) -> dict:
     """The owner's collections (groups of videos across channels). Give a name or id to list its videos.
+    A collection can sit inside another (`inside`); the outer one lists the videos of all those inside it.
 
     Args:
         collection: Optional collection name or id.
@@ -359,14 +360,18 @@ def list_collections(collection: str | None = None) -> dict:
     conn = db.connect()
     try:
         rows = [dict(row) for row in conn.execute(
-            "SELECT c.id, c.name, count(m.video_id) AS videos FROM collections c "
-            "LEFT JOIN collection_videos m ON m.collection_id = c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE")]
+            "SELECT c.id, c.name, (SELECT name FROM collections p WHERE p.id = c.parent_id) AS inside, "
+            "(SELECT count(DISTINCT m.video_id) FROM collection_videos m WHERE m.collection_id IN "
+            "(SELECT id FROM collections k WHERE k.id = c.id OR k.parent_id = c.id)) AS videos "
+            "FROM collections c ORDER BY c.name COLLATE NOCASE")]
         if collection is None:
             return {"collections": rows}
         found = next((row for row in rows if str(row["id"]) == str(collection).strip() or row["name"].lower() == str(collection).strip().lower()), None)
         if found is None:
             raise ValueError(f"No collection matches {collection!r}. There are: {', '.join(row['name'] for row in rows) or 'none'}.")
-        ids = conn.execute("SELECT video_id FROM collection_videos WHERE collection_id = ? ORDER BY added_at DESC", (found["id"],))
+        ids = conn.execute(
+            "SELECT DISTINCT video_id FROM collection_videos WHERE collection_id IN "
+            "(SELECT id FROM collections WHERE id = ? OR parent_id = ?) ORDER BY video_id", (found["id"], found["id"]))
         return {"collection": found, "videos": [_video_summary(library.get_video(conn, row["video_id"])) for row in ids]}
     finally:
         conn.close()

@@ -189,6 +189,23 @@ def test_collections_and_highlights(client):
     assert client.put(f"/api/collections/{collection_id}", json={"name": "Zoo"}).json()["name"] == "Zoo"
     assert client.post(f"/api/collections/999/videos", json={"video_id": video_id}).status_code == 404
 
+    # A collection can hold other collections, one level deep, and counts their videos as its own.
+    folder = client.post("/api/collections", json={"name": "Learning"}).json()
+    assert client.put(f"/api/collections/{collection_id}", json={"parent_id": folder["id"]}).json()["parent_id"] == folder["id"]
+    listed = {c["name"]: c for c in client.get("/api/collections").json()}
+    assert listed["Learning"]["videos"] == 1 and listed["Learning"]["children"] == 1 and listed["Zoo"]["name"] == "Zoo"
+    assert client.get("/api/videos", params={"collection_id": folder["id"]}).json()["total"] == 1
+    inner = client.post("/api/collections", json={"name": "Inner", "parent_id": folder["id"]}).json()
+    assert inner["parent_id"] == folder["id"]
+    assert client.put(f"/api/collections/{folder['id']}", json={"parent_id": folder["id"]}).status_code == 422  # inside itself
+    assert client.put(f"/api/collections/{folder['id']}", json={"parent_id": inner["id"]}).status_code == 422   # a second level
+    assert client.post("/api/collections", json={"name": "Deeper", "parent_id": inner["id"]}).status_code == 422
+    assert client.put(f"/api/collections/{inner['id']}", json={"parent_id": 999}).status_code == 404
+    assert client.put(f"/api/collections/{inner['id']}", json={"parent_id": None}).json()["parent_id"] is None  # back to the top
+    assert client.put(f"/api/collections/{inner['id']}", json={"name": "Renamed"}).json()["parent_id"] is None
+    assert client.delete(f"/api/collections/{folder['id']}").status_code == 204  # what was inside moves to the top
+    assert client.get(f"/api/collections/{collection_id}").json()["parent_id"] is None
+
     saved = client.post(f"/api/videos/{video_id}/highlights", json={"start_s": 2, "end_s": 4.5, "text": "really   long trunks", "note": "use this"})
     highlight_id = saved.json()["id"]
     page = client.get(f"/api/videos/{video_id}").json()["video"]["highlights"]

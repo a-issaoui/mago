@@ -45,7 +45,14 @@ export type HighlightRow = Highlight & {
   video_id: number; title: string | null; platform: Platform; thumb_path: string | null; thumb_blur: string | null; shape: Shape;
   source_title: string | null; created_at: string;
 };
-export type Collection = { id: number; name: string; videos: number; covers: Cover[] };
+export type Collection = { id: number; name: string; videos: number; covers: Cover[]; parent_id: number | null; children: number };
+
+/** Collections in menu order: each top-level one followed by those inside it. */
+export function collectionTree(all: Collection[]): { collection: Collection; inside: boolean }[] {
+  const ids = new Set(all.map((collection) => collection.id));
+  const top = all.filter((collection) => collection.parent_id === null || !ids.has(collection.parent_id));
+  return top.flatMap((parent) => [{ collection: parent, inside: false }, ...all.filter((child) => child.parent_id === parent.id).map((child) => ({ collection: child, inside: true }))]);
+}
 
 export type ChannelOffer = { name: string; handle: string; url: string; source_id: number | null };
 export type PlatformCounts = { total: number; done: number; working: number; failed: number };

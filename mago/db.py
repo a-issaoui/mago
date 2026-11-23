@@ -146,7 +146,8 @@ CREATE TRIGGER IF NOT EXISTS revision_settings_delete AFTER DELETE ON settings B
 CREATE TABLE IF NOT EXISTS collections (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    parent_id INTEGER REFERENCES collections(id) ON DELETE SET NULL  -- a collection inside another (one level)
 );
 CREATE TABLE IF NOT EXISTS collection_videos (
     collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
@@ -227,6 +228,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE videos ADD COLUMN {column} {kind}")
             except sqlite3.OperationalError:  # the other process added it first
                 pass
+    if "parent_id" not in {row["name"] for row in conn.execute("PRAGMA table_info(collections)")}:
+        try:
+            conn.execute("ALTER TABLE collections ADD COLUMN parent_id INTEGER REFERENCES collections(id) ON DELETE SET NULL")
+        except sqlite3.OperationalError:
+            pass
 
 
 def backup(conn: sqlite3.Connection, keep: int = 7) -> Path | None:

@@ -94,8 +94,9 @@ class PositionBody(BaseModel):
     seconds: float = Field(ge=0, le=200_000)
 
 
-class NameBody(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
+class CollectionBody(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    parent_id: int | None = None  # the collection this one sits inside; null puts it at the top
 
 
 class MemberBody(BaseModel):
@@ -327,8 +328,8 @@ def videos(
         where.append("v.platform = ?")
         params.append(platform)
     if collection_id is not None:
-        where.append("v.id IN (SELECT video_id FROM collection_videos WHERE collection_id = ?)")
-        params.append(collection_id)
+        where.append(f"v.id IN (SELECT video_id FROM collection_videos WHERE collection_id IN ({_FAMILY}))")
+        params += [collection_id, collection_id]
     if single:  # videos added on their own, not as part of a channel
         where.append("s.kind = 'video'")
     if status:
@@ -434,14 +435,23 @@ what when where which while who why will with would yeah you your um uh okay oh 
 back little something two first new good look need come many these been""".split())
 
 
+# A collection and the collections inside it (takes the collection id twice).
+_FAMILY = "SELECT id FROM collections WHERE id = ? OR parent_id = ?"
+
+
 def _collections(conn: sqlite3.Connection) -> list[dict]:
+    """Every collection. One that holds others counts their videos as its own."""
     rows = [dict(row) for row in conn.execute(
-        "SELECT c.id, c.name, c.created_at, count(m.video_id) AS videos FROM collections c "
-        "LEFT JOIN collection_videos m ON m.collection_id = c.id GROUP BY c.id ORDER BY c.name COLLATE NOCASE")]
+        "SELECT c.id, c.name, c.created_at, c.parent_id, "
+        "(SELECT count(*) FROM collections k WHERE k.parent_id = c.id) AS children, "
+        "(SELECT count(DISTINCT m.video_id) FROM collection_videos m WHERE m.collection_id IN "
+        "(SELECT id FROM collections k WHERE k.id = c.id OR k.parent_id = c.id)) AS videos "
+        "FROM collections c ORDER BY c.name COLLATE NOCASE")]
     for row in rows:
         row["covers"] = [dict(cover) for cover in conn.execute(
-            "SELECT v.thumb_path, v.thumb_blur, v.shape FROM collection_videos m JOIN videos v ON v.id = m.video_id "
-            "WHERE m.collection_id = ? AND v.thumb_path IS NOT NULL ORDER BY m.added_at DESC LIMIT 4", (row["id"],))]
+            "SELECT v.thumb_path, v.thumb_blur, v.shape FROM videos v WHERE v.thumb_path IS NOT NULL AND v.id IN "
+            f"(SELECT video_id FROM collection_videos WHERE collection_id IN ({_FAMILY})) ORDER BY v.id DESC LIMIT 4",
+            (row["id"], row["id"]))]
     return rows
 
 
@@ -452,17 +462,34 @@ def _collection(conn: sqlite3.Connection, collection_id: int) -> dict:
     return found
 
 
+def _check_parent(conn: sqlite3.Connection, parent_id: int | None, child: dict | None = None) -> None:
+    """Collections nest one level deep: a collection inside another can't hold collections itself."""
+    if parent_id is None:
+        return
+    parent = _collection(conn, parent_id)
+    if child and child["id"] == parent_id:
+        raise HTTPException(422, "A collection can't be put inside itself.")
+    if parent["parent_id"] is not None:
+        raise HTTPException(422, f"{parent['name']} is already inside another collection, so it can't hold collections.")
+    if child and child["children"]:
+        raise HTTPException(422, f"{child['name']} holds other collections, so it can't go inside one.")
+
+
 @app.get("/api/collections")
 def collections(conn: sqlite3.Connection = Conn):
     return _collections(conn)
 
 
 @app.post("/api/collections", status_code=201)
-def create_collection(body: NameBody, conn: sqlite3.Connection = Conn):
-    name = " ".join(body.name.split())
+def create_collection(body: CollectionBody, conn: sqlite3.Connection = Conn):
+    name = " ".join((body.name or "").split())
+    if not name:
+        raise HTTPException(422, "Give the collection a name.")
     existing = conn.execute("SELECT id FROM collections WHERE name = ?", (name,)).fetchone()
-    collection_id = existing["id"] if existing else conn.execute("INSERT INTO collections(name) VALUES (?)", (name,)).lastrowid
-    return _collection(conn, collection_id)
+    if existing:
+        return _collection(conn, existing["id"])
+    _check_parent(conn, body.parent_id)
+    return _collection(conn, conn.execute("INSERT INTO collections(name, parent_id) VALUES (?, ?)", (name, body.parent_id)).lastrowid)
 
 
 @app.get("/api/collections/{collection_id}")
@@ -471,18 +498,25 @@ def collection(collection_id: int, conn: sqlite3.Connection = Conn):
 
 
 @app.put("/api/collections/{collection_id}")
-def rename_collection(collection_id: int, body: NameBody, conn: sqlite3.Connection = Conn):
-    _collection(conn, collection_id)
-    try:
-        conn.execute("UPDATE collections SET name = ? WHERE id = ?", (" ".join(body.name.split()), collection_id))
-    except sqlite3.IntegrityError as error:
-        raise HTTPException(409, "Another collection already has that name.") from error
+def change_collection(collection_id: int, body: CollectionBody, conn: sqlite3.Connection = Conn):
+    """Rename it (`name`), move it into another collection or back to the top (`parent_id`), or both."""
+    found = _collection(conn, collection_id)
+    if "parent_id" in body.model_fields_set:
+        _check_parent(conn, body.parent_id, found)
+        conn.execute("UPDATE collections SET parent_id = ? WHERE id = ?", (body.parent_id, collection_id))
+    name = " ".join((body.name or "").split())
+    if name:
+        try:
+            conn.execute("UPDATE collections SET name = ? WHERE id = ?", (name, collection_id))
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(409, "Another collection already has that name.") from error
     return _collection(conn, collection_id)
 
 
 @app.delete("/api/collections/{collection_id}", status_code=204)
 def delete_collection(collection_id: int, conn: sqlite3.Connection = Conn):
-    """Deletes the grouping only; the videos and transcripts stay in the library."""
+    """Deletes the grouping only; the videos and transcripts stay in the library, and any
+    collections inside it move to the top."""
     _collection(conn, collection_id)
     conn.execute("DELETE FROM collections WHERE id = ?", (collection_id,))
 

@@ -144,7 +144,7 @@ function Library() {
         <section aria-labelledby="collections-heading">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 id="collections-heading" className="text-lg font-semibold tracking-tight">
-              Collections {collections.data.length > 0 && <span className="tabular font-normal text-mute">{collections.data.length}</span>}
+              Collections {collections.data.length > 0 && <span className="tabular font-normal text-mute">{collections.data.filter((collection) => collection.parent_id === null).length}</span>}
             </h2>
             <Button variant="outline" onClick={() => setCreating(true)}>
               New collection
@@ -154,7 +154,7 @@ function Library() {
             <p className="text-sm text-mute">Group videos from any channel by topic or project. Create one here, then add videos from their pages.</p>
           ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
-              {collections.data.map((collection) => (
+              {collections.data.filter((collection) => collection.parent_id === null).map((collection) => (
                 <CollectionCard key={collection.id} collection={collection} />
               ))}
             </div>

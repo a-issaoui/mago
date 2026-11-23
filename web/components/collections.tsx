@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { act } from "@/lib/act";
-import { api, thumbUrl, type Collection } from "@/lib/api";
+import { api, collectionTree, thumbUrl, type Collection } from "@/lib/api";
 
 /** Ask for a name and create the collection. `onCreated` gets the new (or existing) one. */
-export function NewCollectionDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (collection: Collection) => void }) {
+export function NewCollectionDialog({ open, onOpenChange, onCreated, parent }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (collection: Collection) => void; parent?: Collection }) {
   const [name, setName] = useState("");
   async function create() {
-    const made = await act(() => api<Collection>("/collections", { method: "POST", body: JSON.stringify({ name }) }));
+    const made = await act(() => api<Collection>("/collections", { method: "POST", body: JSON.stringify({ name, parent_id: parent?.id ?? null }) }));
     if (!made) return;
     setName("");
     onOpenChange(false);
@@ -23,7 +23,7 @@ export function NewCollectionDialog({ open, onOpenChange, onCreated }: { open: b
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New collection</DialogTitle>
+          <DialogTitle>{parent ? `New collection in ${parent.name}` : "New collection"}</DialogTitle>
           <DialogDescription>A collection groups videos from any channel, for example by topic or project.</DialogDescription>
         </DialogHeader>
         <form
@@ -63,8 +63,8 @@ export function CollectionPicker({ videoId, collections, memberOf, onChanged }: 
           {memberOf.length ? `In ${memberOf.length} ${memberOf.length === 1 ? "collection" : "collections"}` : "Add to a collection"}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          {collections.map((collection) => (
-            <DropdownMenuCheckboxItem key={collection.id} checked={memberOf.includes(collection.id)} onCheckedChange={(checked) => toggle(collection, Boolean(checked))}>
+          {collectionTree(collections).map(({ collection, inside }) => (
+            <DropdownMenuCheckboxItem key={collection.id} className={inside ? "pl-6" : undefined} checked={memberOf.includes(collection.id)} onCheckedChange={(checked) => toggle(collection, Boolean(checked))}>
               {collection.name}
             </DropdownMenuCheckboxItem>
           ))}
@@ -100,7 +100,10 @@ export function CollectionCard({ collection }: { collection: Collection }) {
       </div>
       <div className="px-4 py-3">
         <p className="truncate font-semibold">{collection.name}</p>
-        <p className="tabular text-sm text-mute">{collection.videos === 1 ? "1 video" : `${collection.videos} videos`}</p>
+        <p className="tabular text-sm text-mute">
+          {collection.children > 0 && `${collection.children} ${collection.children === 1 ? "collection" : "collections"}, `}
+          {collection.videos === 1 ? "1 video" : `${collection.videos} videos`}
+        </p>
       </div>
     </Link>
   );

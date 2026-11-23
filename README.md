@@ -130,6 +130,8 @@ data/                   the library: mago.db, thumbs/, avatars/, logs/ (not in g
   A re-upload in the same channel (same title, same length) is listed but not transcribed again (Settings,
   "Skip re-uploads"). After transcription, a video that says the same words as another is marked as a repeat
   or a clip of it and left out of search. `python -m mago.reindex` rebuilds these marks.
+- **Collections inside collections.** A collection can hold other collections, one level deep (its menu: "New collection
+  inside", "Move into"). The outer one shows the videos of everything inside it. Deleting it keeps what was inside.
 - **Whole-channel copy and export.** A channel page has "Copy all" and "Export all": one text file, one
   Markdown file with timestamps, JSON, or a zip with Markdown and SRT per video.
 - **TikTok profiles that won't list.** Some profiles can't be listed by @name (an open yt-dlp bug). Paste one

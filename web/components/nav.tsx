@@ -4,7 +4,7 @@ import { useEffect, useId, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { ActivityIcon, BarChart3Icon, FolderIcon, HighlighterIcon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
+import { ActivityIcon, BarChart3Icon, FolderIcon, FoldersIcon, HighlighterIcon, LibraryIcon, MoonIcon, PauseIcon, PlayIcon, SearchIcon, SettingsIcon, SunIcon } from "lucide-react";
 import { openPalette } from "@/components/command-palette";
 import { PlatformMark } from "@/components/icons";
 import { useLive, useLiveKey } from "@/components/live";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { act } from "@/lib/act";
-import { api, mcpLine, mediaUrl, thumbUrl, useApi, type Collection, type Source } from "@/lib/api";
+import { api, collectionTree, mcpLine, mediaUrl, thumbUrl, useApi, type Collection, type Source } from "@/lib/api";
 
 const links = [
   { href: "/", label: "Library", icon: LibraryIcon },
@@ -158,16 +158,16 @@ export function Sidebar() {
           })}
           {sources.data && channels.length === 0 && <li className="px-3 py-2 text-sm text-mute">Channels you add appear here.</li>}
           {(collections.data ?? []).length > 0 && <li className="px-3 pb-1 pt-4 text-xs font-medium text-mute">Collections</li>}
-          {(collections.data ?? []).map((collection) => (
-            <li key={`k${collection.id}`}>
+          {collectionTree(collections.data ?? []).map(({ collection, inside }) => (
+            <li key={`k${collection.id}`} className={inside ? "ml-[22px] border-l border-line pl-1.5" : undefined}>
               <Link
                 href={`/k/${collection.id}`}
                 aria-current={pathname === `/k/${collection.id}` ? "page" : undefined}
                 className="group relative flex h-10 items-center gap-2.5 rounded-xl px-3 text-sm text-mute transition-colors hover:bg-raised/70 hover:text-ink aria-[current=page]:bg-murex-soft aria-[current=page]:font-medium aria-[current=page]:text-ink"
               >
                 <span className="glow-bg absolute inset-y-2 left-0 hidden w-[3px] rounded-full group-aria-[current=page]:block" />
-                <FolderIcon className="size-[18px] shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{collection.name}</span>
+                {collection.children > 0 ? <FoldersIcon className="size-[18px] shrink-0" /> : <FolderIcon className={inside ? "size-4 shrink-0" : "size-[18px] shrink-0"} />}
+                <span className={`min-w-0 flex-1 truncate ${collection.children > 0 ? "font-medium text-ink" : ""}`}>{collection.name}</span>
                 <span className="tabular text-xs">{collection.videos}</span>
               </Link>
             </li>
