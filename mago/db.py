@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS videos (
     view_count INTEGER,
     thumb_path TEXT,
     thumb_url_original TEXT,
+    thumb_blur TEXT,
+    shape TEXT NOT NULL DEFAULT 'wide' CHECK (shape IN ('wide','tall')),
     language TEXT,
     status TEXT NOT NULL DEFAULT 'listed' CHECK (status IN
         ('listed','queued','captions','downloading','transcribing','done','failed','skipped')),
@@ -66,6 +68,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
     source_id INTEGER REFERENCES sources(id) ON DELETE CASCADE,
     kind TEXT NOT NULL CHECK (kind IN ('list','transcribe')),
+    priority INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','running','done','failed')),
     attempts INTEGER NOT NULL DEFAULT 0,
     next_try_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -74,7 +77,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     log TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_pending ON jobs(state, next_try_at);
+CREATE INDEX IF NOT EXISTS jobs_video ON jobs(video_id);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- What the worker is doing right now (device, heartbeat), for the Activity screen.
+CREATE TABLE IF NOT EXISTS runtime (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -107,3 +113,14 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, str(value)),
     )
+
+
+def set_runtime(conn: sqlite3.Connection, **values: object) -> None:
+    conn.executemany(
+        "INSERT INTO runtime(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [(key, str(value)) for key, value in values.items()],
+    )
+
+
+def get_runtime(conn: sqlite3.Connection) -> dict[str, str]:
+    return {row["key"]: row["value"] for row in conn.execute("SELECT key, value FROM runtime")}

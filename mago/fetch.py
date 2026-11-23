@@ -15,7 +15,17 @@ from yt_dlp.utils import DownloadError
 from . import captions
 from .links import Link
 
-_QUIET = {"quiet": True, "no_warnings": True, "noprogress": True, "socket_timeout": 30}
+
+
+class _Silent:
+    """yt-dlp prints errors to stderr on top of raising them; we only want the exception."""
+
+    def debug(self, message: str) -> None: ...
+    def warning(self, message: str) -> None: ...
+    def error(self, message: str) -> None: ...
+
+
+_QUIET = {"quiet": True, "no_warnings": True, "noprogress": True, "socket_timeout": 30, "logger": _Silent()}
 _YOUTUBE_TABS = ("videos", "shorts", "streams")
 
 _UNAVAILABLE = (
@@ -93,7 +103,11 @@ def video_fields(info: dict, platform: str) -> dict:
     else:
         url = info.get("webpage_url") or info.get("url") or ""
     title = (info.get("title") or "").strip()
+    tall = platform == "tiktok" or "/shorts/" in str(info.get("url") or "")
+    if info.get("width") and info.get("height"):
+        tall = info["height"] > info["width"]
     return {
+        "shape": "tall" if tall else "wide",
         "platform_video_id": video_id,
         "url": url,
         "title": title[:300] or None,

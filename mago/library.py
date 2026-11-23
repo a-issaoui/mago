@@ -45,8 +45,9 @@ def upsert_video(conn: sqlite3.Connection, source_id: int, platform: str, fields
     if row is None:
         cursor = conn.execute(
             "INSERT INTO videos(source_id, platform, platform_video_id, url, title, description, published_at, "
-            "duration_s, view_count, thumb_url_original, language) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (source_id, platform, fields["platform_video_id"], *(fields.get(c) for c in _VIDEO_COLUMNS)),
+            "duration_s, view_count, thumb_url_original, language, shape) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (source_id, platform, fields["platform_video_id"], *(fields.get(c) for c in _VIDEO_COLUMNS),
+             fields.get("shape") or ("tall" if platform == "tiktok" else "wide")),
         )
         return cursor.lastrowid, True
     update_video(conn, row["id"], fields)

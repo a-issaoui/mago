@@ -1,6 +1,12 @@
-import pytest
+import os
+import tempfile
 
-from mago import db
+# Must be set before mago.config is imported: tests never touch the real library.
+os.environ["MAGO_DATA"] = tempfile.mkdtemp(prefix="mago-test-")
+
+import pytest  # noqa: E402
+
+from mago import db  # noqa: E402
 
 
 @pytest.fixture
