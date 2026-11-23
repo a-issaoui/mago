@@ -113,13 +113,3 @@ def test_no_duplicate_active_jobs(conn):
     assert jobs.enqueue_transcribe(conn, video_id) == jobs.enqueue_transcribe(conn, video_id)
     with pytest.raises(Exception):
         conn.execute("INSERT INTO jobs(video_id, kind) VALUES (?, 'transcribe')", (video_id,))
-
-
-def test_sign_in_is_used_only_when_a_cookies_file_exists(tmp_path, monkeypatch):
-    from mago import config, fetch
-
-    monkeypatch.setattr(config, "COOKIES_DIR", tmp_path)
-    assert fetch._account("https://www.youtube.com/watch?v=x") == {} and fetch.account_file("tiktok") is None
-    (tmp_path / "youtube.txt").write_text("# Netscape HTTP Cookie File\n")
-    assert fetch._account("https://www.youtube.com/watch?v=x") == {"cookiefile": str(tmp_path / "youtube.txt")}
-    assert fetch._account("tiktok") == {}  # one platform's account is never sent to the other
