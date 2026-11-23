@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start, stop or check Mago's three processes: API, worker and web interface.
 #   bin/mago start | stop | restart | status [api|worker|web]
+#   bin/mago install-boot | uninstall-boot     start with the computer (systemd user services)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN="$ROOT/data/run"; LOGS="$ROOT/data/logs"
@@ -17,7 +18,7 @@ command_for() {
 
 alive() { [[ -f "$RUN/$1.pid" ]] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
 
-start() {
+start_plain() {
   if alive "$1"; then echo "$1 already running"; return; fi
   cd "$ROOT"
   # shellcheck disable=SC2046
@@ -26,7 +27,7 @@ start() {
   echo "$1 started"
 }
 
-stop() {
+stop_plain() {
   if alive "$1"; then
     local pid; pid="$(cat "$RUN/$1.pid")"
     kill -- "-$pid" 2>/dev/null || kill "$pid"
@@ -44,14 +45,65 @@ stop() {
   rm -f "$RUN/$1.pid"
 }
 
+UNITS="$HOME/.config/systemd/user"
+managed() { [[ -f "$UNITS/mago-$1.service" ]]; }
+
+install_boot() {
+  mkdir -p "$UNITS"
+  for service in api worker web; do
+    cat >"$UNITS/mago-$service.service" <<UNIT
+[Unit]
+Description=Mago $service
+After=network-online.target
+
+[Service]
+WorkingDirectory=$ROOT
+Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=MAGO_API=http://127.0.0.1:$API_PORT
+ExecStart=$(command_for "$service")
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:$LOGS/$service.log
+StandardError=inherit
+# The worker finishes the video it is on before it exits.
+TimeoutStopSec=$([[ $service == worker ]] && echo 600 || echo 15)
+KillMode=mixed
+
+[Install]
+WantedBy=default.target
+UNIT
+  done
+  for service in api worker web; do stop_plain "$service" >/dev/null; done
+  systemctl --user daemon-reload
+  systemctl --user enable --now mago-api.service mago-worker.service mago-web.service
+  # Without "linger" the services would start at login, not at boot.
+  loginctl enable-linger "$USER" 2>/dev/null && echo "Mago now starts when this computer starts." \
+    || echo "Mago now starts when you log in. For start at boot, run: sudo loginctl enable-linger $USER"
+}
+
+uninstall_boot() {
+  systemctl --user disable --now mago-api.service mago-worker.service mago-web.service 2>/dev/null || true
+  rm -f "$UNITS"/mago-{api,worker,web}.service
+  systemctl --user daemon-reload
+  echo "Mago no longer starts by itself. Use: bin/mago start"
+}
+
 action="${1:-status}"; shift || true
+case "$action" in
+  install-boot) install_boot; exit ;;
+  uninstall-boot) uninstall_boot; exit ;;
+esac
 services=("$@"); [[ ${#services[@]} -eq 0 ]] && services=(api worker web)
+start() { if managed "$1"; then systemctl --user start "mago-$1.service" && echo "$1 started"; else start_plain "$1"; fi; }
+stop() { if managed "$1"; then systemctl --user stop "mago-$1.service" && echo "$1 stopped"; else stop_plain "$1"; fi; }
+running() { if managed "$1"; then systemctl --user is-active --quiet "mago-$1.service"; else alive "$1"; fi; }
+
 for service in "${services[@]}"; do
   case "$action" in
     start) start "$service" ;;
     stop) stop "$service" ;;
-    restart) stop "$service"; sleep 1; start "$service" ;;
-    status) if alive "$service"; then echo "$service running"; else echo "$service stopped"; fi ;;
-    *) echo "usage: bin/mago start|stop|restart|status [api|worker|web]"; exit 2 ;;
+    restart) if managed "$service"; then systemctl --user restart "mago-$service.service" && echo "$service restarted"; else stop "$service"; sleep 1; start "$service"; fi ;;
+    status) if running "$service"; then echo "$service running"; else echo "$service stopped"; fi ;;
+    *) echo "usage: bin/mago start|stop|restart|status [api|worker|web]  |  install-boot | uninstall-boot"; exit 2 ;;
   esac
 done

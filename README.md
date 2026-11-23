@@ -29,7 +29,8 @@ said, jump to a channel, or stop and resume downloads.
 | web | Next.js interface; proxies `/api` and `/media` to the API | `127.0.0.1:3010` |
 
 `https://mago.test` is served by Caddy (`mago.test { reverse_proxy 127.0.0.1:3010 }`) with a dnsmasq entry pointing
-`mago.test` at `127.0.0.1`. The processes are not started at boot.
+`mago.test` at `127.0.0.1`. Run `bin/mago install-boot` once to start them with the computer (systemd user services, logs still in
+`data/logs/`); `bin/mago uninstall-boot` undoes it. The same start/stop/status commands work either way.
 
 ## Set up from scratch
 
