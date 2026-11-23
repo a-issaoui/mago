@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Sora, Source_Serif_4 } from "next/font/google";
-import { MobileNav, Sidebar, Topbar } from "@/components/nav";
+import { MobileNav, Screen, Sidebar, Topbar } from "@/components/nav";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="lg:pl-64">
             <Topbar />
             <main id="main" className="mx-auto w-full max-w-[1320px] px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-16 lg:pt-8">
-              {children}
+              <Screen>{children}</Screen>
             </main>
           </div>
           <MobileNav />

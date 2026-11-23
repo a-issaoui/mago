@@ -8,6 +8,9 @@ Running: queue_status, queue_control, get_settings, update_settings, export_chan
          remove_source, remove_video, services, update_ytdlp.
 """
 
+import functools
+import inspect
+import os
 import subprocess
 import time
 from typing import Literal
@@ -36,6 +39,38 @@ server = MCPServer(
 )
 
 MAX_CHARS = 60_000
+
+
+def _note(tool_name: str | None = None) -> None:
+    """Tell the library this server is alive (and which tool was just used). Never lets a
+    bookkeeping problem break a tool call."""
+    try:
+        conn = db.connect()
+        try:
+            now = int(time.time())
+            conn.execute("INSERT OR IGNORE INTO mcp_sessions(pid, started_at) VALUES (?, ?)", (os.getpid(), now))
+            if tool_name:
+                conn.execute("UPDATE mcp_sessions SET last_call_at = ?, last_tool = ?, calls = calls + 1 WHERE pid = ?",
+                             (now, tool_name, os.getpid()))
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def tool(function):
+    """Register a tool that also records that it was used."""
+    if inspect.iscoroutinefunction(function):
+        @functools.wraps(function)
+        async def wrapper(*args, **kwargs):
+            _note(function.__name__)
+            return await function(*args, **kwargs)
+    else:
+        @functools.wraps(function)
+        def wrapper(*args, **kwargs):
+            _note(function.__name__)
+            return function(*args, **kwargs)
+    return server.tool()(wrapper)
 _FINAL = ("done", "failed", "skipped")
 
 
@@ -126,7 +161,7 @@ def _blockers(conn, platform: str) -> list[str]:
 # ---------------------------------------------------------------- reading
 
 
-@server.tool()
+@tool
 def search(query: str, platform: str | None = None, source: str | None = None, published_after: str | None = None,
            limit: int = 12, include_duplicates: bool = False) -> dict:
     """Search what was said across every transcript in the library.
@@ -171,7 +206,7 @@ def search(query: str, platform: str | None = None, source: str | None = None, p
         conn.close()
 
 
-@server.tool()
+@tool
 def get_transcript(video: str, timestamps: bool = False, start_s: float = 0, end_s: float | None = None) -> dict:
     """Read one video's transcript from the library.
 
@@ -193,7 +228,7 @@ def get_transcript(video: str, timestamps: bool = False, start_s: float = 0, end
         conn.close()
 
 
-@server.tool()
+@tool
 def get_channel_transcripts(source: str, offset: int = 0, max_chars: int = 50_000, newest_first: bool = True,
                             include_duplicates: bool = False) -> dict:
     """Read the transcripts of a whole channel, playlist or profile, one page at a time.
@@ -240,7 +275,7 @@ def get_channel_transcripts(source: str, offset: int = 0, max_chars: int = 50_00
         conn.close()
 
 
-@server.tool()
+@tool
 def list_sources() -> dict:
     """List every channel, playlist, profile and single video in the library, with progress."""
     conn = db.connect()
@@ -250,7 +285,7 @@ def list_sources() -> dict:
         conn.close()
 
 
-@server.tool()
+@tool
 def list_videos(source: str | None = None, status: Literal["all", "done", "working", "failed", "duplicates"] = "all",
                 title_contains: str = "", limit: int = 50, offset: int = 0) -> dict:
     """List videos, newest first, optionally for one channel and one state.
@@ -296,7 +331,7 @@ def list_videos(source: str | None = None, status: Literal["all", "done", "worki
 # ---------------------------------------------------------------- adding
 
 
-@server.tool()
+@tool
 async def transcribe(url: str, wait_seconds: int = 180, timestamps: bool = False) -> dict:
     """Transcribe a YouTube or TikTok link and return what was said.
 
@@ -360,16 +395,16 @@ async def transcribe(url: str, wait_seconds: int = 180, timestamps: bool = False
         conn.close()
 
 
-@server.tool()
+@tool
 async def add_source(url: str) -> dict:
     """Queue a link without waiting for it (see `transcribe` to wait for a single video).
 
     A channel, playlist or profile link adds EVERY video in it: confirm with the owner first.
     """
-    return await transcribe(url, wait_seconds=0)
+    return await transcribe.__wrapped__(url, wait_seconds=0)
 
 
-@server.tool()
+@tool
 def sync_source(source: str) -> dict:
     """Check a channel, playlist or profile for new videos and queue only those.
 
@@ -386,7 +421,7 @@ def sync_source(source: str) -> dict:
         conn.close()
 
 
-@server.tool()
+@tool
 def retry(video: str | None = None, all_failed: bool = False, source: str | None = None) -> dict:
     """Try again: one video, or every failed video (optionally of one channel).
 
@@ -422,7 +457,7 @@ def retry(video: str | None = None, all_failed: bool = False, source: str | None
 # ---------------------------------------------------------------- running Mago
 
 
-@server.tool()
+@tool
 def queue_status() -> dict:
     """What Mago is doing: totals per platform, what is running, what is stopped or rate-limited,
     a rough time left, and recent failures."""
@@ -451,7 +486,7 @@ def queue_status() -> dict:
         conn.close()
 
 
-@server.tool()
+@tool
 def queue_control(action: Literal["stop", "resume"], platform: Literal["all", "youtube", "tiktok"] = "all") -> dict:
     """Stop or resume downloads, for one platform or both. The video in progress finishes first.
 
@@ -468,7 +503,7 @@ def queue_control(action: Literal["stop", "resume"], platform: Literal["all", "y
         conn.close()
 
 
-@server.tool()
+@tool
 def get_settings() -> dict:
     """Mago's settings: Whisper model and device, language, pacing, hourly budget, re-sync, repeats."""
     conn = db.connect()
@@ -480,7 +515,7 @@ def get_settings() -> dict:
         conn.close()
 
 
-@server.tool()
+@tool
 def update_settings(whisper_model: Literal["tiny", "base", "small", "medium"] | None = None,
                     device: Literal["auto", "cuda", "cpu"] | None = None, language: str | None = None,
                     translate_to_english: bool | None = None, tiktok_delay_s: float | None = None,
@@ -517,7 +552,7 @@ def update_settings(whisper_model: Literal["tiny", "base", "small", "medium"] | 
         conn.close()
 
 
-@server.tool()
+@tool
 def export_channel(source: str, format: Literal["txt", "md", "json"] = "md") -> dict:
     """Write every transcript of a channel to one file on this computer and return its path.
 
@@ -544,7 +579,7 @@ def export_channel(source: str, format: Literal["txt", "md", "json"] = "md") -> 
         conn.close()
 
 
-@server.tool()
+@tool
 def remove_source(source: str, confirm: bool = False) -> dict:
     """Delete a channel (or single-video entry) with all its videos and transcripts. Cannot be undone.
 
@@ -565,7 +600,7 @@ def remove_source(source: str, confirm: bool = False) -> dict:
         conn.close()
 
 
-@server.tool()
+@tool
 def remove_video(video: str, confirm: bool = False) -> dict:
     """Delete one video and its transcript from the library. Cannot be undone.
 
@@ -591,7 +626,7 @@ def remove_video(video: str, confirm: bool = False) -> dict:
         conn.close()
 
 
-@server.tool()
+@tool
 def services(action: Literal["status", "start", "stop", "restart"] = "status",
              which: Literal["all", "api", "worker", "web"] = "all") -> dict:
     """Mago's three processes: api (the library's HTTP interface), worker (does the transcribing)
@@ -607,7 +642,7 @@ def services(action: Literal["status", "start", "stop", "restart"] = "status",
     return {"ok": result.returncode == 0, "output": lines, "interface": "https://mago.test"}
 
 
-@server.tool()
+@tool
 def update_ytdlp() -> dict:
     """Install the newest yt-dlp (the tool that reads YouTube and TikTok). Use when links that
     used to work start failing. The worker reloads itself; the api needs services(action='restart', which='api')."""
@@ -633,7 +668,16 @@ def update_ytdlp() -> dict:
 
 
 def main() -> None:
-    server.run("stdio")
+    _note()
+    try:
+        server.run("stdio")
+    finally:
+        try:
+            conn = db.connect()
+            conn.execute("DELETE FROM mcp_sessions WHERE pid = ?", (os.getpid(),))
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 if __name__ == "__main__":

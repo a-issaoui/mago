@@ -116,6 +116,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_video ON jobs(video_id)
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_one_active_per_source ON jobs(source_id)
     WHERE kind = 'list' AND state IN ('pending','running');
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- One row per running MCP server (each Claude session starts its own), so the interface can show
+-- whether Claude is connected and what it last asked for.
+CREATE TABLE IF NOT EXISTS mcp_sessions (
+    pid INTEGER PRIMARY KEY,
+    started_at INTEGER NOT NULL,
+    last_call_at INTEGER,
+    last_tool TEXT,
+    calls INTEGER NOT NULL DEFAULT 0
+);
 -- What the worker is doing right now (device, heartbeat), for the Activity screen.
 CREATE TABLE IF NOT EXISTS runtime (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """

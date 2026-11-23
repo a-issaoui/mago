@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { act } from "@/lib/act";
-import { api, mediaUrl, thumbUrl, useApi, type Source } from "@/lib/api";
+import { api, mcpLine, mediaUrl, thumbUrl, useApi, type Source } from "@/lib/api";
 
 const links = [
   { href: "/", label: "Library", icon: LibraryIcon },
@@ -30,14 +30,15 @@ function useNavState() {
   const done = snapshot ? snapshot.platforms.youtube.done + snapshot.platforms.tiktok.done : 0;
   const isCurrent = (href: string) =>
     href === "/" ? pathname === "/" || pathname.startsWith("/c/") || pathname.startsWith("/v/") : pathname.startsWith(href);
-  return { pathname, snapshot, busy, stopped, total, done, isCurrent };
+  const working = (snapshot?.active.length ?? 0) + (snapshot?.listing.length ?? 0) > 0;
+  return { pathname, snapshot, busy, stopped, total, done, isCurrent, working };
 }
 
 /** The mark: four bars of a sound level, in the brand gradient. */
-export function Mark({ className = "size-7" }: { className?: string }) {
+export function Mark({ className = "size-7", live = false }: { className?: string; live?: boolean }) {
   const id = useId();
   return (
-    <svg viewBox="0 0 28 28" className={className} aria-hidden>
+    <svg viewBox="0 0 28 28" className={`${className} ${live ? "mark-live" : ""}`} aria-hidden>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
           <stop stopColor="var(--glow-a)" />
@@ -69,7 +70,7 @@ function ThemeButton() {
 
 /** The menu on wide screens: pages, your channels, and the queue, on every screen. */
 export function Sidebar() {
-  const { snapshot, busy, stopped, total, done, isCurrent, pathname } = useNavState();
+  const { snapshot, busy, stopped, total, done, isCurrent, pathname, working } = useNavState();
   const key = useLiveKey(5000);
   const sources = useApi<Source[]>("/sources", key);
   const channels = (sources.data ?? []).filter((source) => source.kind !== "video");
@@ -103,7 +104,7 @@ export function Sidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-surface/70 backdrop-blur-2xl lg:flex">
       <Link href="/" className="flex h-16 shrink-0 items-center gap-2.5 px-5" aria-label="Mago, library">
-        <Mark />
+        <Mark live={working} />
         <span className="display text-[22px]">Mago</span>
       </Link>
 
@@ -155,6 +156,11 @@ export function Sidebar() {
         </ul>
       </div>
 
+      <Link href="/settings#claude" className="mx-3 flex items-start gap-2 rounded-xl px-3 py-2 text-xs text-mute hover:bg-raised/70 hover:text-ink" title="How Claude reaches this library">
+        <span className={`mt-1 size-2 shrink-0 rounded-full ${snapshot?.mcp.sessions ? "bg-sea" : "bg-line-strong"} ${snapshot?.mcp.busy ? "live-dot" : ""}`} />
+        <span>{mcpLine(snapshot?.mcp)}</span>
+      </Link>
+
       {total > 0 && (
         <div className="m-3 rounded-2xl border border-line bg-night/60 p-3.5">
           <div className="flex items-center justify-between gap-2">
@@ -196,11 +202,12 @@ export function Sidebar() {
 
 /** Across the top: the search-and-commands field and the theme switch (plus the mark on small screens). */
 export function Topbar() {
+  const { working } = useNavState();
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-night/75 backdrop-blur-2xl">
       <div className="mx-auto flex h-14 max-w-[1320px] items-center gap-3 px-4 sm:px-6 lg:h-16 lg:px-10">
         <Link href="/" className="flex items-center gap-2 lg:hidden" aria-label="Mago, library">
-          <Mark className="size-6" />
+          <Mark className="size-6" live={working} />
           <span className="display text-xl">Mago</span>
         </Link>
         <button
@@ -256,5 +263,15 @@ function BusyCount({ count, stopped = false, className = "" }: { count: number; 
       <span className={`size-1.5 rounded-full bg-current ${stopped ? "" : "live-dot"}`} />
       {count > 999 ? "999+" : count}
     </span>
+  );
+}
+
+/** Wraps a screen so that moving to another one eases in. */
+export function Screen({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  return (
+    <div key={pathname} className="screen-in">
+      {children}
+    </div>
   );
 }

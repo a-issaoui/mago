@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useTitle } from "@/hooks/use-title";
 import { act } from "@/lib/act";
-import { api, useApi } from "@/lib/api";
+import { useLive } from "@/components/live";
+import { ago, api, mcpLine, useApi } from "@/lib/api";
 
 type Settings = {
   whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string;
@@ -76,6 +77,9 @@ export default function SettingsPage() {
   const settings = useApi<Settings>("/settings");
   const system = useApi<System>("/system");
   const [updating, setUpdating] = useState(false);
+  const { snapshot } = useLive();
+  const mcp = snapshot?.mcp;
+  const command = "claude mcp add mago --scope user -- /path/to/mago/.venv/bin/python -m mago.mcp_server";
 
   const save = (patch: Record<string, string | number>) =>
     act(() => api("/settings", { method: "PUT", body: JSON.stringify(patch) }), "Saved. It applies to the next video.").then(settings.reload);
@@ -114,7 +118,7 @@ export default function SettingsPage() {
       <div className="grid items-start gap-x-10 gap-y-4 xl:grid-cols-[200px_minmax(0,760px)]">
       <nav aria-label="Settings sections" className="hidden xl:sticky xl:top-24 xl:block">
         <ul className="space-y-0.5 border-l border-line">
-          {["Transcribing", "Pace", "New videos and repeats", "This computer"].map((name) => (
+          {["Transcribing", "Pace", "New videos and repeats", "Claude", "This computer"].map((name) => (
             <li key={name}>
               <a href={`#${name.toLowerCase().replace(/\W+/g, "-")}`} className="-ml-px block border-l-2 border-transparent py-1.5 pl-4 text-sm text-mute hover:border-murex hover:text-ink">
                 {name}
@@ -165,6 +169,27 @@ export default function SettingsPage() {
             </Field>
             <Field label="Skip re-uploads" hint="A video with the same title and length as an earlier one in the same channel is listed but not transcribed again.">
               <Switch aria-label="Skip re-uploads" checked={values.skip_repeats === "1"} onCheckedChange={(checked) => save({ skip_repeats: checked ? "1" : "0" })} />
+            </Field>
+          </Group>
+
+          <Group title="Claude" note="Claude reaches this library through Mago's MCP server: it can search, read transcripts, transcribe links and run the queue. Each Claude session starts its own connection.">
+            <dl className="tabular -mt-2 divide-y divide-line text-sm">
+              {[
+                ["Status", mcpLine(mcp)],
+                ["Sessions connected now", String(mcp?.sessions ?? 0)],
+                ["Requests from those sessions", String(mcp?.calls ?? 0)],
+                ["Last request", mcp?.last_tool ? `${mcp.last_tool.replace(/_/g, " ")}, ${ago(mcp.last_call_at)}` : "None yet"],
+              ].map(([name, value]) => (
+                <div key={name} className="flex justify-between gap-4 py-2.5">
+                  <dt className="text-mute">{name}</dt>
+                  <dd className="text-right font-medium">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <Field label="Connect Claude Code" hint="Run this once in a terminal, then restart your Claude sessions.">
+              <Button variant="outline" size="lg" className="h-10 px-5" onClick={() => act(() => navigator.clipboard.writeText(command), "Command copied")}>
+                Copy the command
+              </Button>
             </Field>
           </Group>
 

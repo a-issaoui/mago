@@ -3,7 +3,8 @@
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { CopyIcon, DownloadIcon, ExternalLinkIcon, SearchIcon } from "lucide-react";
+import { CopyIcon, DownloadIcon, ExternalLinkIcon, LinkIcon, SearchIcon } from "lucide-react";
+import { Kbd } from "@/components/ui/kbd";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { PlatformMark } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
@@ -78,9 +79,20 @@ const EXPORTS = [
 
 /** One paragraph. Memoised: while the video plays only the paragraph holding the current line re-renders.
  *  Lines are clickable; the timestamp is the keyboard stop, so a long transcript is not thousands of tab stops. */
-const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, onSeek }: { paragraph: Paragraph; active: number; needle: string; onSeek: (seconds: number) => void }) {
+const ParagraphView = memo(function ParagraphView({ paragraph, active, needle, onSeek, onCopyLink }: { paragraph: Paragraph; active: number; needle: string; onSeek: (seconds: number) => void; onCopyLink: (seconds: number) => void }) {
   return (
-    <p className="mb-5 grid grid-cols-[3.6rem_minmax(0,1fr)] gap-x-2">
+    <p className="group/paragraph relative mb-5 grid grid-cols-[3.6rem_minmax(0,1fr)] gap-x-2">
+      {/* Mouse only (the C key does the same for the current moment), so it adds no keyboard stops. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => onCopyLink(paragraph.start)}
+        className="absolute left-0 top-8 hidden size-7 place-items-center rounded-md text-mute hover:bg-raised hover:text-murex group-hover/paragraph:grid"
+        aria-label={`Copy a link to ${clock(paragraph.start)}`}
+        title="Copy a link to this moment"
+      >
+        <LinkIcon className="size-3.5" />
+      </button>
       <button
         type="button"
         onClick={() => onSeek(paragraph.start)}
@@ -134,14 +146,54 @@ function VideoView() {
 
   // The player reports its position several times a second; state changes only when the line does.
   const [played, setPlayed] = useState<number | null>(null);
+  const position = useRef(start);
+  const settleUntil = useRef(0);
   const onTime = useCallback((seconds: number) => {
+    // Just after a jump the player still reports where it was; trust the jump until it catches up,
+    // so quick repeated presses add up instead of being lost.
+    if (Date.now() < settleUntil.current && Math.abs(seconds - position.current) > 1.5) return;
+    position.current = seconds;
     const found = lineAt(segments, seconds);
     setPlayed((current) => (current === found ? current : found));
   }, [segments]);
   // Before anything has played, the current line is the one the link pointed at (?t=).
   const active = played ?? (start > 0 ? lineAt(segments, start) : -1);
 
-  const seek = useCallback((seconds: number) => player.current?.seek(seconds), []);
+  const seek = useCallback((seconds: number) => {
+    position.current = seconds;
+    settleUntil.current = Date.now() + 1500;
+    player.current?.seek(seconds);
+  }, []);
+  // J and L can be pressed several times quickly: add the presses up and send the player one jump.
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const nudge = useCallback((delta: number) => {
+    position.current = Math.max(0, position.current + delta);
+    settleUntil.current = Date.now() + 2000;
+    clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = setTimeout(() => seek(position.current), 220);
+  }, [seek]);
+  useEffect(() => () => clearTimeout(nudgeTimer.current), []);
+  const copyMoment = useCallback(
+    (seconds: number) => act(() => navigator.clipboard.writeText(`${window.location.origin}/v/${id}?t=${Math.floor(seconds)}`), `Link to ${clock(seconds)} copied`),
+    [id],
+  );
+
+  // Keys, as on the platforms themselves: K plays or pauses, J and L jump 10 seconds, C copies a link to this moment.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.metaKey || event.ctrlKey || event.altKey || !target || target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName) || document.querySelector('[role="dialog"]')) return;
+      const key = event.key.toLowerCase();
+      if (key === "k") player.current?.toggle();
+      else if (key === "j") nudge(-10);
+      else if (key === "l") nudge(10);
+      else if (key === "c") copyMoment(position.current);
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [copyMoment, nudge]);
 
   // Following: keep the current line in view by scrolling the page, unless the reader has just scrolled themselves.
   useEffect(() => {
@@ -332,12 +384,17 @@ function VideoView() {
                   Follow the video
                 </label>
               </div>
+              <p className="mt-2 hidden items-center gap-x-3 gap-y-1 text-xs text-mute lg:flex lg:flex-wrap">
+                <span className="flex items-center gap-1.5"><Kbd>K</Kbd> play or pause</span>
+                <span className="flex items-center gap-1.5"><Kbd>J</Kbd><Kbd>L</Kbd> back or forward 10 s</span>
+                <span className="flex items-center gap-1.5"><Kbd>C</Kbd> copy a link to this moment</span>
+              </p>
               <div ref={list} className="mt-5 max-w-[68ch] font-serif text-[17px] leading-[1.75]">
                 {segments.length === 0 && <p className="font-sans text-base text-mute">No speech was found in this video.</p>}
                 {needle && matches === 0 && <p className="font-sans text-base text-mute">{`"${query.trim()}" isn't said in this video.`}</p>}
                 {paragraphs.map((paragraph) =>
                   !needle || paragraph.lines.some((line) => line.text.toLowerCase().includes(needle)) ? (
-                    <ParagraphView key={paragraph.first} paragraph={paragraph} active={active >= paragraph.first && active <= paragraph.last ? active : -1} needle={needle} onSeek={seek} />
+                    <ParagraphView key={paragraph.first} paragraph={paragraph} active={active >= paragraph.first && active <= paragraph.last ? active : -1} needle={needle} onSeek={seek} onCopyLink={copyMoment} />
                   ) : null,
                 )}
               </div>

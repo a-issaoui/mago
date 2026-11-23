@@ -90,3 +90,32 @@ def test_reading_adding_and_running_mago_over_stdio(seeded):
     assert call("list_videos", source="@jawed")["total"] == 1
     assert call("remove_source", source="@jawed", confirm=True)["deleted"]["source_id"] == source_id
     assert all(s["handle"] != "@jawed" for s in call("list_sources")["sources"])
+
+
+def test_the_interface_can_see_a_connected_claude_session(seeded):
+    import os
+    import time
+
+    from mago import api
+
+    conn = db.connect()
+    conn.execute("DELETE FROM mcp_sessions")
+    assert api.mcp_status(conn)["sessions"] == 0
+    call("search", query="elephants")  # a real server starts, is used, and exits
+    assert api.mcp_status(conn)["sessions"] == 0  # it cleaned up after itself
+    # a session that is still running (a sleeping process stands in for it), one that died without
+    # cleaning up, and one whose pid now belongs to an unrelated program (this test runner)
+    import subprocess
+
+    stand_in = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)", "mago.mcp_server"])
+    try:
+        conn.execute("INSERT INTO mcp_sessions(pid, started_at, last_call_at, last_tool, calls) VALUES (?, ?, ?, 'search', 3)",
+                     (stand_in.pid, int(time.time()), int(time.time())))
+        conn.execute("INSERT INTO mcp_sessions(pid, started_at) VALUES (4194000, 1)")
+        conn.execute("INSERT INTO mcp_sessions(pid, started_at) VALUES (?, 1)", (os.getpid(),))
+        status = api.mcp_status(conn)
+        assert (status["sessions"], status["last_tool"], status["calls"]) == (1, "search", 3)
+        assert conn.execute("SELECT count(*) FROM mcp_sessions").fetchone()[0] == 1
+    finally:
+        stand_in.kill()
+        conn.close()

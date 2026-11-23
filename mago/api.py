@@ -349,6 +349,30 @@ def search(
     return {"query": q, "items": hits, "loose": loose, "has_more": has_more}
 
 
+def mcp_status(conn: sqlite3.Connection) -> dict:
+    """Is any Claude session connected through the MCP server, and what did it last ask for?"""
+    alive = []
+    for row in conn.execute("SELECT * FROM mcp_sessions").fetchall():
+        try:
+            os.kill(row["pid"], 0)  # signal 0: only checks that the process exists
+            with open(f"/proc/{row['pid']}/cmdline", "rb") as handle:
+                if b"mago" not in handle.read():
+                    raise ProcessLookupError  # the pid was reused by something else
+            alive.append(dict(row))
+        except (ProcessLookupError, FileNotFoundError):
+            conn.execute("DELETE FROM mcp_sessions WHERE pid = ?", (row["pid"],))
+        except PermissionError:
+            alive.append(dict(row))
+    last = max((s for s in alive if s["last_call_at"]), key=lambda s: s["last_call_at"], default=None)
+    return {
+        "sessions": len(alive),
+        "calls": sum(s["calls"] for s in alive),
+        "last_tool": last["last_tool"] if last else None,
+        "last_call_at": last["last_call_at"] if last else None,
+        "busy": bool(last and time.time() - last["last_call_at"] < 15),  # Claude used a tool moments ago
+    }
+
+
 def activity_snapshot(conn: sqlite3.Connection) -> dict:
     counts = {row["status"]: row["n"] for row in conn.execute("SELECT status, count(*) AS n FROM videos GROUP BY status")}
     active = conn.execute(
@@ -373,7 +397,13 @@ def activity_snapshot(conn: sqlite3.Connection) -> dict:
         if row["status"] != "listed":
             platforms[row["platform"]][bucket] += row["n"]
         platforms[row["platform"]]["total"] += row["n"]
+    finished = conn.execute(
+        "SELECT id, title, platform FROM videos WHERE status = 'done' AND transcribed_at IS NOT NULL "
+        "ORDER BY transcribed_at DESC, id DESC LIMIT 3"
+    )
     return {
+        "mcp": mcp_status(conn),
+        "finished": [dict(row) for row in finished],
         "paused": [name for name in db.get_settings(conn)["paused"].split(",") if name],
         "pauses": pauses,
         "platforms": platforms,

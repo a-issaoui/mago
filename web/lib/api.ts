@@ -92,7 +92,11 @@ export type Hit = {
   snippet: string;
 };
 
+export type McpStatus = { sessions: number; calls: number; last_tool: string | null; last_call_at: number | null; busy: boolean };
+
 export type Snapshot = {
+  mcp: McpStatus;
+  finished: { id: number; title: string | null; platform: Platform }[];
   paused: Platform[];
   pauses: { platform: Platform; until: number; reason: "refused" | "budget" }[];
   platforms: Record<Platform, PlatformCounts>;
@@ -191,6 +195,23 @@ export function shortDate(iso: string | null): string {
 export function compact(n: number | null | undefined): string {
   if (n == null) return "";
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+/** "just now", "4 minutes ago", "2 hours ago" (from a time in seconds since 1970). */
+export function ago(seconds: number | null | undefined): string {
+  if (!seconds) return "";
+  const passed = Math.max(0, Date.now() / 1000 - seconds);
+  if (passed < 60) return "just now";
+  if (passed < 3600) return `${Math.floor(passed / 60)} min ago`;
+  if (passed < 86400) return `${Math.floor(passed / 3600)} h ago`;
+  return `${Math.floor(passed / 86400)} d ago`;
+}
+
+/** What Claude is doing, in a few words. */
+export function mcpLine(mcp: McpStatus | undefined): string {
+  if (!mcp || mcp.sessions === 0) return "Claude is not connected";
+  const who = mcp.sessions === 1 ? "Claude is connected" : `${mcp.sessions} Claude sessions connected`;
+  return mcp.last_tool ? `${who}. Last used ${mcp.last_tool.replace(/_/g, " ")}, ${ago(mcp.last_call_at)}` : `${who}, idle`;
 }
 
 /** "about 25 minutes", "about 3 hours" */

@@ -59,6 +59,7 @@ The server gives Claude full control of Mago:
 | Running | `queue_status`, `queue_control` (stop/resume), `get_settings`, `update_settings`, `export_channel`, `services` (start/stop/restart), `update_ytdlp` |
 | Deleting | `remove_source`, `remove_video` (both need `confirm=True`) |
 
+The sidebar and Settings show whether a Claude session is connected and the last tool it used.
 Transcribing needs the worker to be running; the tools say so when it isn't, or when downloads are stopped.
 A Claude session loads the tool list when it starts, so restart the session after the server changes.
 

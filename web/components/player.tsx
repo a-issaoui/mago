@@ -3,7 +3,7 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import type { Platform, Shape } from "@/lib/api";
 
-export type PlayerHandle = { seek: (seconds: number) => void };
+export type PlayerHandle = { seek: (seconds: number) => void; toggle: () => void };
 
 type Props = {
   platform: Platform;
@@ -15,7 +15,7 @@ type Props = {
   ref: Ref<PlayerHandle>;
 };
 
-type YouTubePlayer = { getCurrentTime?: () => number; seekTo?: (s: number, allow: boolean) => void; playVideo?: () => void; destroy?: () => void };
+type YouTubePlayer = { getPlayerState?: () => number; pauseVideo?: () => void; getCurrentTime?: () => number; seekTo?: (s: number, allow: boolean) => void; playVideo?: () => void; destroy?: () => void };
 type YouTubeApi = { Player: new (el: HTMLElement, options: object) => YouTubePlayer };
 
 declare global {
@@ -49,6 +49,7 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
   const holder = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const youTube = useRef<YouTubePlayer | null>(null);
+  const playing = useRef(false); // TikTok's player doesn't say; we track what we asked for
   const report = useRef(onTime);
   useEffect(() => {
     report.current = onTime;
@@ -64,8 +65,19 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
         const send = (type: string, value?: number) => frame.current?.contentWindow?.postMessage({ type, value, "x-tiktok-player": true }, "https://www.tiktok.com");
         send("seekTo", seconds);
         send("play");
+        playing.current = true;
       }
       report.current(seconds);
+    },
+    toggle() {
+      if (platform === "youtube") {
+        // 1 = playing, 3 = buffering
+        if ([1, 3].includes(youTube.current?.getPlayerState?.() ?? -1)) youTube.current?.pauseVideo?.();
+        else youTube.current?.playVideo?.();
+      } else {
+        playing.current = !playing.current;
+        frame.current?.contentWindow?.postMessage({ type: playing.current ? "play" : "pause", "x-tiktok-player": true }, "https://www.tiktok.com");
+      }
     },
   }), [platform]);
 
