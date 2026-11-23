@@ -141,3 +141,18 @@ def test_paused_platforms_are_left_alone(conn, worker, monkeypatch):
     assert not worker.step() and statuses(conn) == ["queued"] * 3
     db.set_setting(conn, "paused", "")
     assert worker.step() and statuses(conn)[0] == "done"
+
+
+def test_refusals_are_remembered_across_restarts(conn, worker, monkeypatch):
+    source_id = library.add_source(conn, URL)
+    jobs.enqueue_list(conn, source_id)
+    worker.step()
+    monkeypatch.setattr(pipeline, "process_video", fake_process([fetch.RateLimited("429"), fetch.RateLimited("429")]))
+    worker.step()
+    conn.execute("UPDATE jobs SET next_try_at = datetime('now', '-1 second') WHERE state = 'pending'")
+    restarted = Worker(conn)  # a new process
+    monkeypatch.setattr(restarted, "_wait_between", lambda platform: None)
+    assert restarted.strikes["youtube"] == 1
+    restarted.step()
+    wait = conn.execute("SELECT max(strftime('%s', next_try_at) - strftime('%s', 'now')) FROM jobs WHERE state = 'pending'").fetchone()[0]
+    assert 200 < wait <= 240  # the second pause, not the first again

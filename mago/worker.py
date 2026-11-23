@@ -24,7 +24,10 @@ class Worker:
         self.conn = conn
         self.engine: Engine | None = None
         self.running = True
-        self.strikes: dict[str, int] = {}  # refusals in a row, per platform
+        # Refusals in a row, per platform. Kept in the database so a restart doesn't forget that a
+        # platform has been refusing for an hour and start knocking every two minutes again.
+        runtime = db.get_runtime(conn)
+        self.strikes: dict[str, int] = {name: int(runtime.get(f"strikes_{name}", 0)) for name in ("youtube", "tiktok")}
 
     def _engine(self, settings: dict) -> Engine:
         wanted = (settings["whisper_model"], settings["device"])
@@ -104,7 +107,7 @@ class Worker:
                     return True
                 jobs.finish(self.conn, job["id"], self.run_transcribe(job))
                 if platform and self.strikes.pop(platform, 0):
-                    db.set_runtime(self.conn, **{f"pause_{platform}_until": 0})
+                    db.set_runtime(self.conn, **{f"pause_{platform}_until": 0, f"strikes_{platform}": 0})
         except fetch.RateLimited as error:
             name = {"youtube": "YouTube", "tiktok": "TikTok"}.get(platform or "", "The platform")
             message = f"{name} asked Mago to slow down. It will try again shortly."
@@ -112,6 +115,7 @@ class Worker:
                 # The limit is on this computer's address, not on this video: retrying one video
                 # doesn't help, so pause the whole platform, longer each time it refuses again.
                 self.strikes[platform] = self.strikes.get(platform, 0) + 1
+                db.set_runtime(self.conn, **{f"strikes_{platform}": self.strikes[platform]})
                 jobs.release(self.conn, job, message)
                 self._pause(platform, min(120 * 2 ** (self.strikes[platform] - 1), 3600), "refused")
                 log.info("rate limit detail: %s", str(error)[:200])
