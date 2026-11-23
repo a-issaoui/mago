@@ -28,8 +28,9 @@ function useNavState() {
   const { snapshot } = useLive();
   const busy = (snapshot?.queued ?? 0) + (snapshot?.active.length ?? 0) + (snapshot?.listing.length ?? 0);
   const stopped = (snapshot?.paused.length ?? 0) === 2;
-  const total = snapshot ? snapshot.platforms.youtube.total + snapshot.platforms.tiktok.total : 0;
-  const done = snapshot ? snapshot.platforms.youtube.done + snapshot.platforms.tiktok.done : 0;
+  const counts = snapshot ? Object.values(snapshot.platforms) : [];
+  const total = counts.reduce((sum, platform) => sum + platform.total, 0);
+  const done = counts.reduce((sum, platform) => sum + platform.done, 0);
   const isCurrent = (href: string) =>
     href === "/" ? pathname === "/" || pathname.startsWith("/c/") || pathname.startsWith("/v/") || pathname.startsWith("/k/") : pathname.startsWith(href);
   const working = (snapshot?.active.length ?? 0) + (snapshot?.listing.length ?? 0) > 0;

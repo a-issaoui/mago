@@ -3,6 +3,7 @@
 The web API and the MCP server both call these functions, so they behave the same.
 """
 
+import os
 import re
 import sqlite3
 
@@ -295,4 +296,6 @@ def timestamp_url(video: dict, seconds: float) -> str:
     """A link that opens the video at that moment (YouTube only supports it)."""
     if video["platform"] == "youtube":
         return f"https://www.youtube.com/watch?v={video['platform_video_id']}&t={int(seconds)}s"
+    if video["platform"] in ("file", "podcast"):  # no page of its own: open it in Mago
+        return f"{os.environ.get('MAGO_URL', 'https://mago.test')}/v/{video.get('video_id', video.get('id'))}?t={int(seconds)}"
     return video["url"]

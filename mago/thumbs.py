@@ -107,6 +107,16 @@ def _make_thumb(video: dict) -> tuple | None:
     return relative, blur_data_uri(image), "tall" if image.height > image.width else "wide", video["id"]
 
 
+def store_image(conn: sqlite3.Connection, video_id: int, platform: str, name: str, image: Image.Image) -> None:
+    """Thumbnail files and placeholder from a picture already in memory (a frame of a local video)."""
+    relative = f"thumbs/{platform}/{name}"
+    base = config.DATA_DIR / relative
+    base.parent.mkdir(parents=True, exist_ok=True)
+    for label, width in SIZES.items():
+        _resized(image, width).save(base.with_name(f"{base.name}_{label}.webp"), "WEBP", quality=82, method=4)
+    _store(conn, (relative, blur_data_uri(image), "tall" if image.height > image.width else "wide", video_id))
+
+
 def _store(conn: sqlite3.Connection, made: tuple | None) -> bool:
     if made:
         conn.execute("UPDATE videos SET thumb_path = ?, thumb_blur = ?, shape = ? WHERE id = ?", made)

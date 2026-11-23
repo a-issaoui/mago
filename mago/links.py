@@ -12,7 +12,7 @@ _HANDLE = re.compile(r"^@[\w.\-]+$")  # handles can be non-Latin (\w is Unicode-
 
 @dataclass(frozen=True)
 class Link:
-    platform: str  # youtube | tiktok
+    platform: str  # youtube | tiktok | podcast | file
     kind: str  # video | channel | playlist | profile
     url: str  # canonical form, safe to store and compare
     key: str  # video id, playlist id, channel path or @handle
@@ -26,7 +26,9 @@ def detect(raw: str) -> Link:
     text = (raw or "").strip()
     if not text:
         raise UnsupportedLink("Paste a YouTube or TikTok link.")
-    if not re.match(r"^https?://", text, re.I):
+    if text.startswith("file://"):
+        pass
+    elif not re.match(r"^https?://", text, re.I):
         text = "https://" + text
     parsed = urlparse(text)
     host = (parsed.hostname or "").lower().removeprefix("www.")
@@ -41,7 +43,13 @@ def detect(raw: str) -> Link:
         return Link("tiktok", "video", f"https://{host}/{parts[0]}", parts[0])
     if host in {"tiktok.com", "m.tiktok.com"}:
         return _tiktok(parts)
-    raise UnsupportedLink("Only YouTube and TikTok links are supported.")
+    if text.startswith("file://") and re.fullmatch(r"file://[0-9a-f]{16}\.\w{2,5}", raw.strip()):
+        return Link("file", "video", raw.strip(), raw.strip().removeprefix("file://"))
+    # A podcast: an Apple Podcasts page, or a feed address.
+    looks_like_feed = re.search(r"(\.xml|\.rss|/feed|/rss|feeds?\.|podcast)", f"{host}{parsed.path}", re.I)
+    if parsed.scheme == "https" and host and (host == "podcasts.apple.com" or looks_like_feed):
+        return Link("podcast", "channel", text.split("#")[0], text.split("#")[0])
+    raise UnsupportedLink("Paste a YouTube or TikTok link, or a podcast feed.")
 
 
 def _youtube_video(video_id: str) -> Link:

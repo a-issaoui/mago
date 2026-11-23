@@ -132,6 +132,8 @@ class Worker:
             jobs.retry_later(self.conn, job, jobs.backoff_s(job["attempts"], rate_limited), message)
 
     def _wait_between(self, platform: str | None) -> None:
+        if platform in ("file", "podcast"):  # nothing to be polite to for a local file; a feed's audio host isn't rate-limited like the platforms
+            return self._sleep(0.0 if platform == "file" else 1.0)
         settings = db.get_settings(self.conn)
         try:
             delay = float(settings["tiktok_delay_s" if platform == "tiktok" else "youtube_delay_s"])

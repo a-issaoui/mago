@@ -11,6 +11,8 @@ type Props = {
   shape: Shape;
   start?: number;
   title: string;
+  mediaUrl?: string; // files and podcasts: the audio or video itself
+  audioOnly?: boolean;
   onTime: (seconds: number) => void;
   ref: Ref<PlayerHandle>;
 };
@@ -45,7 +47,9 @@ function loadYouTubeApi(): Promise<YouTubeApi> {
 
 /** The embedded player. It reports the playing position so the transcript
  *  can follow, and seeks when a transcript line is clicked. */
-export function Player({ platform, videoId, shape, start = 0, title, onTime, ref }: Props) {
+export function Player({ platform, videoId, shape, start = 0, title, mediaUrl, audioOnly, onTime, ref }: Props) {
+  const media = useRef<HTMLVideoElement>(null);
+  const native = platform === "file" || platform === "podcast";
   const holder = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const youTube = useRef<YouTubePlayer | null>(null);
@@ -57,7 +61,12 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
 
   useImperativeHandle(ref, () => ({
     seek(seconds: number) {
-      if (platform === "youtube") {
+      if (native) {
+        if (media.current) {
+          media.current.currentTime = seconds;
+          media.current.play().catch(() => {});
+        }
+      } else if (platform === "youtube") {
         // The methods only exist once the player has loaded.
         youTube.current?.seekTo?.(seconds, true);
         youTube.current?.playVideo?.();
@@ -70,7 +79,10 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
       report.current(seconds);
     },
     toggle() {
-      if (platform === "youtube") {
+      if (native) {
+        if (media.current?.paused) media.current.play().catch(() => {});
+        else media.current?.pause();
+      } else if (platform === "youtube") {
         // 1 = playing, 3 = buffering
         if ([1, 3].includes(youTube.current?.getPlayerState?.() ?? -1)) youTube.current?.pauseVideo?.();
         else youTube.current?.playVideo?.();
@@ -79,7 +91,7 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
         frame.current?.contentWindow?.postMessage({ type: playing.current ? "play" : "pause", "x-tiktok-player": true }, "https://www.tiktok.com");
       }
     },
-  }), [platform]);
+  }), [platform, native]);
 
   useEffect(() => {
     if (platform !== "youtube" || !holder.current) return;
@@ -124,6 +136,26 @@ export function Player({ platform, videoId, shape, start = 0, title, onTime, ref
   }, [platform, start]);
 
   // A portrait video would fill a phone screen; cap it so the transcript stays visible under the sticky player.
+  if (native) {
+    return (
+      <div ref={holder} className={audioOnly ? "panel !rounded-2xl p-4" : `overflow-hidden rounded-2xl bg-black ${shape === "tall" ? "mx-auto aspect-[9/16] max-h-[40dvh] xl:max-h-[62dvh]" : "aspect-video w-full max-xl:mx-auto max-xl:max-w-[68dvh]"}`}>
+        {/* A <video> element plays audio too; for sound-only files it is shown as a control bar. */}
+        <video
+          ref={media}
+          src={mediaUrl}
+          controls
+          playsInline
+          preload="metadata"
+          aria-label={title}
+          className={audioOnly ? "h-12 w-full" : "size-full"}
+          onLoadedMetadata={(event) => {
+            if (start > 0) event.currentTarget.currentTime = start;
+          }}
+          onTimeUpdate={(event) => report.current(event.currentTarget.currentTime)}
+        />
+      </div>
+    );
+  }
   const box = shape === "tall" ? "aspect-[9/16] max-h-[40dvh] xl:max-h-[62dvh] mx-auto" : "aspect-video w-full max-xl:mx-auto max-xl:max-w-[68dvh]";
   return (
     <div ref={holder} className={`overflow-hidden rounded-2xl bg-black [&_iframe]:size-full ${box}`}>

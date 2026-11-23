@@ -10,9 +10,9 @@ import { PageHeader } from "@/components/page-header";
 import { Pager } from "@/components/pager";
 import { Pills } from "@/components/pills";
 import { Thumb } from "@/components/thumb";
-import { useLiveKey } from "@/components/live";
+import { useLive, useLiveKey } from "@/components/live";
 import { useTitle } from "@/hooks/use-title";
-import { clock, platformName, shortDate, useApi, type Hit, type Source } from "@/lib/api";
+import { clock, PLATFORMS, platformName, shortDate, useApi, type Hit, type Source } from "@/lib/api";
 
 /** The search engine wraps matches in <mark>. Build elements from that
  *  instead of injecting HTML: transcript text is not trusted markup. */
@@ -69,6 +69,7 @@ function SearchView() {
   if (mode === "meaning") search.set("mode", "meaning");
   if (platform) search.set("platform", platform);
   if (sourceId) search.set("source_id", sourceId);
+  const live = useLive();
   const key = useLiveKey(1500); // newly transcribed videos join the results without a reload
   const results = useApi<{ items: Hit[]; loose?: boolean; has_more?: boolean; index?: { passages: number; indexed: number } }>(query.length >= 2 ? `/search?${search}` : null, key);
   // Keep the last results on screen while the next query loads.
@@ -119,8 +120,11 @@ function SearchView() {
           onChange={(value) => setParam("platform", value)}
           options={[
             { value: "", label: "Everywhere" },
-            { value: "youtube", label: "YouTube", icon: <PlatformMark platform="youtube" className="size-[18px]" /> },
-            { value: "tiktok", label: "TikTok", icon: <PlatformMark platform="tiktok" className="size-[18px]" /> },
+            ...PLATFORMS.filter((name) => name === "youtube" || name === "tiktok" || (live.snapshot?.platforms[name]?.total ?? 0) > 0).map((name) => ({
+              value: name as string,
+              label: platformName(name),
+              icon: <PlatformMark platform={name} className="size-[18px]" />,
+            })),
           ]}
         />
         {channels.length > 0 && (

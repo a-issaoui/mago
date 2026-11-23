@@ -190,7 +190,7 @@ def search(query: str, platform: str | None = None, source: str | None = None, p
 
     Args:
         query: Plain words or a question. Exact terms match best.
-        platform: Optional filter, "youtube" or "tiktok".
+        platform: Optional filter: "youtube", "tiktok", "podcast" or "file".
         source: Optional filter: a channel's id, @handle, title or link.
         published_after: Optional ISO date (YYYY-MM-DD) to leave out older videos.
         limit: Maximum hits (1 to 30).
@@ -198,8 +198,8 @@ def search(query: str, platform: str | None = None, source: str | None = None, p
         by_meaning: Also find passages that say it in other words (needs Mago's api process to be
             running; falls back to words alone if it isn't). Set False for exact-term lookups.
     """
-    if platform not in (None, "youtube", "tiktok"):
-        raise ValueError('platform must be "youtube" or "tiktok"')
+    if platform not in (None, "youtube", "tiktok", "podcast", "file"):
+        raise ValueError('platform must be "youtube", "tiktok", "podcast" or "file"')
     conn = db.connect()
     try:
         source_id = _find_source(conn, source)["id"] if source else None
@@ -407,7 +407,7 @@ def list_highlights(query: str = "", video: str | None = None, limit: int = 50) 
 
 @tool
 async def transcribe(url: str, wait_seconds: int = 180, timestamps: bool = False) -> dict:
-    """Transcribe a YouTube or TikTok link and return what was said.
+    """Transcribe a YouTube or TikTok link, or a podcast feed, and return what was said.
 
     A single video: it is added (if new), and this call waits until its transcript is ready, then
     returns it. Videos with captions take seconds; others are transcribed by Whisper on this
@@ -465,6 +465,38 @@ async def transcribe(url: str, wait_seconds: int = 180, timestamps: bool = False
             "note": "Not ready yet. Call get_transcript with this link in a little while.",
             "blockers": blockers,
         }
+    finally:
+        conn.close()
+
+
+@tool
+def transcribe_file(path: str) -> dict:
+    """Transcribe an audio or video file that is on this computer. Mago keeps its own copy,
+    transcribes it with Whisper in the background, and it becomes searchable like any video.
+
+    Args:
+        path: Full path of the file (mp3, m4a, wav, flac, ogg, mp4, mov, mkv, webm and similar).
+    """
+    import shutil
+    from pathlib import Path
+
+    from . import files
+
+    source = Path(path).expanduser()
+    if not source.is_file():
+        raise ValueError(f"No file at {path}.")
+    if source.stat().st_size > files.MAX_BYTES:
+        raise ValueError("That file is larger than 8 GB.")
+    conn = db.connect()
+    try:
+        try:
+            stored = files.media_dir() / files.new_name(source.name)
+            shutil.copyfile(source, stored)
+            video_id = files.register(conn, stored, source.name)
+        except files.BadFile as error:
+            raise ValueError(str(error)) from error
+        return {**_video_summary(library.get_video(conn, video_id)), "note": "Queued. Read it with get_transcript once it is done.",
+                "blockers": _blockers(conn, "file")}
     finally:
         conn.close()
 
@@ -739,6 +771,27 @@ def update_ytdlp() -> dict:
         finally:
             conn.close()
     return {"before": before, "after": after, "updated": after != before}
+
+
+@server.prompt()
+def summarize_video(video: str) -> str:
+    """Summarise one video from the library: the main points, with timestamps."""
+    return (
+        f"Read the transcript of the video {video!r} with get_transcript (timestamps on; continue with start_s if it is cut short). "
+        "Then write: one paragraph on what it is about; the main points as a short list, each with the timestamp where it is said; "
+        "and any claims that sound doubtful, marked as such. Use only what the transcript says. If the transcript was made by Whisper, "
+        "names and numbers may be misheard: say so where it matters."
+    )
+
+
+@server.prompt()
+def summarize_channel(source: str) -> str:
+    """Summarise what a channel covers, from its transcripts."""
+    return (
+        f"Read the channel {source!r} with get_channel_transcripts, page by page (follow next_offset) until you have covered it or read about "
+        "20 videos. Then write what the channel is about, its recurring themes with one or two example videos each (title and date), and "
+        "what changed over time. Use only what the transcripts say."
+    )
 
 
 def main() -> None:

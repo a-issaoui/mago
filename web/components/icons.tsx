@@ -9,20 +9,39 @@ export const PlayIcon = ({ className }: Props) => (
 );
 
 /** Platform badges in each platform's own colours, so the two are told apart at a glance. */
-export const PlatformMark = ({ platform, className }: Props & { platform: "youtube" | "tiktok" }) =>
-  platform === "youtube" ? (
-    <svg {...base} className={className} role="img" aria-label="YouTube">
-      <rect x="0.5" y="2.5" width="15" height="11" rx="3.2" fill="var(--youtube)" />
-      <path d="M6.5 5.4v5.2L11 8 6.5 5.4Z" fill="#fff" />
-    </svg>
-  ) : (
-    <svg {...base} className={className} role="img" aria-label="TikTok">
-      <rect width="16" height="16" rx="4" fill="#111" />
-      <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#25f4ee" transform="translate(-0.45 0.35)" />
-      <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#fe2c55" transform="translate(0.45 -0.35)" />
-      <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#fff" />
+export const PlatformMark = ({ platform, className }: Props & { platform: "youtube" | "tiktok" | "podcast" | "file" }) => {
+  if (platform === "youtube")
+    return (
+      <svg {...base} className={className} role="img" aria-label="YouTube">
+        <rect x="0.5" y="2.5" width="15" height="11" rx="3.2" fill="var(--youtube)" />
+        <path d="M6.5 5.4v5.2L11 8 6.5 5.4Z" fill="#fff" />
+      </svg>
+    );
+  if (platform === "tiktok")
+    return (
+      <svg {...base} className={className} role="img" aria-label="TikTok">
+        <rect width="16" height="16" rx="4" fill="#111" />
+        <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#25f4ee" transform="translate(-0.45 0.35)" />
+        <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#fe2c55" transform="translate(0.45 -0.35)" />
+        <path d="M9.3 3.2H7.8v6.3a1.45 1.45 0 1 1-1.45-1.45c.15 0 .3.02.45.07V6.6a3 3 0 1 0 2.5 2.95V6.3c.68.5 1.5.77 2.35.77V5.55A2.35 2.35 0 0 1 9.3 3.2Z" fill="#fff" />
+      </svg>
+    );
+  if (platform === "podcast")
+    return (
+      <svg {...base} className={className} role="img" aria-label="Podcast">
+        <rect width="16" height="16" rx="4" fill="#8b46e6" />
+        <rect x="6.2" y="3" width="3.6" height="6.2" rx="1.8" fill="#fff" />
+        <path d="M4.4 7.6a3.6 3.6 0 0 0 7.2 0M8 11.2v1.9" stroke="#fff" strokeWidth="1.2" strokeLinecap="round" />
+      </svg>
+    );
+  return (
+    <svg {...base} className={className} role="img" aria-label="A file from this computer">
+      <rect width="16" height="16" rx="4" fill="#3d6ee8" />
+      <path d="M5 3.2h4l2.4 2.4v7.2H5V3.2Z" fill="#fff" />
+      <path d="M9 3.2v2.4h2.4" stroke="#3d6ee8" strokeWidth="0.9" />
     </svg>
   );
+};
 
 export const SearchIcon = ({ className }: Props) => (
   <svg {...base} className={className} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">

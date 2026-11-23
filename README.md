@@ -43,6 +43,20 @@ cd web && npm install && npm run build
 Needs `ffmpeg`, Node 22 and, for GPU Whisper, an NVIDIA card (the CUDA libraries come from pip). Without a usable GPU
 it falls back to the CPU.
 
+## What you can add
+
+- **YouTube and TikTok:** a video, a channel, a playlist or a profile. Captions when they exist, Whisper otherwise.
+- **Podcasts:** a feed address or an Apple Podcasts link. Each episode's audio is downloaded, transcribed and deleted.
+- **Your own files:** drop an audio or video file on the paste box (or `transcribe_file` from Claude). Mago keeps
+  its copy in `data/media/` so it can be played back.
+
+## What you can do with it
+
+- **Search** by exact words or by meaning (a small multilingual model runs locally; the worker indexes when idle).
+- **Read along:** the transcript follows the player; chapters, text size, resume where you stopped; K, J, L and C keys.
+- **Keep things:** highlights with notes (select text in a transcript), collections across channels, exports.
+- **See the state:** Activity (live queue, stop and resume), Statistics, and whether Claude is connected.
+
 ## Use it from Claude (MCP)
 
 `.mcp.json` in this folder registers the server for Claude Code sessions started here. To use it everywhere:
@@ -58,6 +72,8 @@ The server gives Claude full control of Mago:
 | Reading | `search`, `get_transcript` (one video), `get_channel_transcripts` (a whole channel, page by page), `list_sources`, `list_videos` |
 | Adding | `transcribe` (a video link: waits and returns the transcript; a channel link: queues every video), `add_source`, `sync_source`, `retry` |
 | Running | `queue_status`, `queue_control` (stop/resume), `get_settings`, `update_settings`, `export_channel`, `services` (start/stop/restart), `update_ytdlp` |
+| Keeping | `list_highlights`, `list_collections`; prompts `summarize_video` and `summarize_channel` |
+| Files | `transcribe_file` (a path on this computer) |
 | Deleting | `remove_source`, `remove_video` (both need `confirm=True`) |
 
 The sidebar and Settings show whether a Claude session is connected and the last tool it used.
@@ -67,6 +83,7 @@ A Claude session loads the tool list when it starts, so restart the session afte
 ## Tests
 
 ```
+cd web && npm run e2e                  # 38 browser checks against the running app (read-only)
 .venv/bin/python -m pytest              # offline, about 12 s
 .venv/bin/python -m pytest -m network   # real YouTube and TikTok links, uses the GPU
 cd web && npx tsc --noEmit && npx eslint . && npm run build

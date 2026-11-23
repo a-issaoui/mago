@@ -12,7 +12,7 @@ import { Thumb } from "@/components/thumb";
 import { Button } from "@/components/ui/button";
 import { useTitle } from "@/hooks/use-title";
 import { act } from "@/lib/act";
-import { api, platformName, roughDuration, statusLabel, useApi, type Activity, type Platform, type Video } from "@/lib/api";
+import { api, PLATFORMS, platformName, roughDuration, statusLabel, useApi, type Activity, type Platform, type Video } from "@/lib/api";
 
 /** "resumes in 12 minutes", counting down without waiting for the server. */
 function useNow(): number {
@@ -87,7 +87,7 @@ export default function ActivityPage() {
   const platforms = snapshot?.platforms ?? data?.platforms;
   const stopped = snapshot?.paused ?? data?.paused ?? [];
   const pauses = (snapshot?.pauses ?? data?.pauses ?? []).filter((pause) => pause.until > now);
-  const names: Platform[] = ["youtube", "tiktok"];
+  const names: Platform[] = PLATFORMS;
   const sum = (field: "done" | "working" | "failed" | "total") => (platforms ? names.reduce((value, name) => value + platforms[name][field], 0) : 0);
   const total = sum("total");
   const idle = active.length === 0 && queued === 0 && listing.length === 0;
@@ -162,7 +162,7 @@ export default function ActivityPage() {
                     <PlatformMark platform={name} className="size-[18px]" />
                     {platformName(name)}
                     <span className="ml-auto font-normal text-mute">{`${platforms[name].done} of ${platforms[name].total}`}</span>
-                    {platforms[name].working > 0 && (
+                    {platforms[name].working > 0 && (name === "youtube" || name === "tiktok") && (
                       <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setPaused(name, !isStopped)}>
                         {isStopped ? "Resume" : "Stop"}
                       </Button>

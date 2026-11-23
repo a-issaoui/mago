@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export type Platform = "youtube" | "tiktok";
+export type Platform = "youtube" | "tiktok" | "podcast" | "file";
+export const PLATFORMS: Platform[] = ["youtube", "tiktok", "podcast", "file"];
 export type Shape = "wide" | "tall";
 export type Status = "listed" | "queued" | "captions" | "downloading" | "transcribing" | "done" | "failed" | "skipped";
 
@@ -235,9 +236,12 @@ export function roughDuration(seconds: number): string {
   return hours < 1.5 ? "about an hour" : `about ${Math.round(hours)} hours`;
 }
 
-export const platformName = (platform: Platform) => (platform === "youtube" ? "YouTube" : "TikTok");
+const NAMES: Record<Platform, string> = { youtube: "YouTube", tiktok: "TikTok", podcast: "Podcast", file: "Your files" };
+export const platformName = (platform: Platform) => NAMES[platform] ?? platform;
 
 export function kindLabel(platform: Platform, kind: Source["kind"]): string {
+  if (platform === "podcast") return "Podcast";
+  if (platform === "file") return "A file from this computer";
   const names = { video: "video", channel: "channel", playlist: "playlist", profile: "profile" } as const;
   return `${platformName(platform)} ${names[kind]}`;
 }

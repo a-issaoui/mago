@@ -8,7 +8,7 @@ from . import config
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sources (
     id INTEGER PRIMARY KEY,
-    platform TEXT NOT NULL CHECK (platform IN ('youtube','tiktok')),
+    platform TEXT NOT NULL CHECK (platform IN ('youtube','tiktok','podcast','file')),
     kind TEXT NOT NULL CHECK (kind IN ('video','channel','playlist','profile')),
     url TEXT NOT NULL UNIQUE,
     handle TEXT,
@@ -206,6 +206,18 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Columns added after the first version (CREATE TABLE IF NOT EXISTS won't add them)."""
+    # Libraries made before podcasts and local files existed only allow two platforms: widen the rule in place.
+    made = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sources'").fetchone()[0]
+    narrow = "CHECK (platform IN ('youtube','tiktok'))"
+    if narrow in made:
+        try:
+            conn.execute("PRAGMA writable_schema = ON")
+            conn.execute("UPDATE sqlite_master SET sql = replace(sql, ?, ?) WHERE type = 'table' AND name = 'sources'",
+                         (narrow, "CHECK (platform IN ('youtube','tiktok','podcast','file'))"))
+            version = conn.execute("PRAGMA schema_version").fetchone()[0]
+            conn.execute(f"PRAGMA schema_version = {version + 1}")  # other open connections re-read the schema
+        finally:
+            conn.execute("PRAGMA writable_schema = OFF")
     have = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
     for column, kind in (("channel_name", "TEXT"), ("channel_url", "TEXT"), ("channel_uid", "TEXT"),
                          ("duplicate_of", "INTEGER REFERENCES videos(id) ON DELETE SET NULL"), ("duplicate_kind", "TEXT"),

@@ -14,7 +14,7 @@ import { Pills } from "@/components/pills";
 import { SourceCard } from "@/components/source-card";
 import { Sheet, VideoCard } from "@/components/video-card";
 import { useTitle } from "@/hooks/use-title";
-import { useApi, type Collection, type Platform, type Source, type Video } from "@/lib/api";
+import { PLATFORMS, platformName, useApi, type Collection, type Platform, type Source, type Video } from "@/lib/api";
 
 type Page = { total: number; items: Video[] };
 
@@ -83,9 +83,13 @@ function Library() {
               router.replace(value ? `/?platform=${value}` : "/", { scroll: false });
             }}
             options={[
-              { value: "", label: "Everything" },
-              { value: "youtube", label: "YouTube", count: snapshot?.platforms.youtube.total, icon: <PlatformMark platform="youtube" className="size-[18px]" /> },
-              { value: "tiktok", label: "TikTok", count: snapshot?.platforms.tiktok.total, icon: <PlatformMark platform="tiktok" className="size-[18px]" /> },
+              { value: "" as Platform | "", label: "Everything" },
+              ...PLATFORMS.filter((name) => name === "youtube" || name === "tiktok" || (snapshot?.platforms[name]?.total ?? 0) > 0).map((name) => ({
+                value: name as Platform | "",
+                label: platformName(name),
+                count: snapshot?.platforms[name]?.total,
+                icon: <PlatformMark platform={name} className="size-[18px]" />,
+              })),
             ]}
           />
         </div>
@@ -98,7 +102,7 @@ function Library() {
             <span className="tabular font-normal text-mute">{working.data.total}</span>
             {stopped.length > 0 && (
               <span className="text-sm font-normal text-amber">
-                {stopped.length === 2 ? "Downloads are stopped. Resume them in Activity." : `${stopped[0] === "youtube" ? "YouTube" : "TikTok"} downloads are stopped.`}
+                {stopped.length === 2 ? "Downloads are stopped. Resume them in Activity." : `${platformName(stopped[0])} downloads are stopped.`}
               </span>
             )}
           </h2>
@@ -192,7 +196,7 @@ function Library() {
         </section>
       )}
 
-      {nothingHere && <p className="text-mute">{`Nothing from ${platform === "youtube" ? "YouTube" : "TikTok"} in your library yet.`}</p>}
+      {nothingHere && platform && <p className="text-mute">{`Nothing from ${platformName(platform)} in your library yet.`}</p>}
       {empty && (
         <p className="max-w-3xl text-mute">
           Your library is empty. Paste a link above to add the first video. Videos with captions take a few seconds; the rest are transcribed on this computer.

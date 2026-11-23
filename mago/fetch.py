@@ -133,6 +133,15 @@ def video_fields(info: dict, platform: str) -> dict:
 
 def probe(link: Link) -> dict:
     """Cheap look at a link for the preview card: no listing of a whole channel."""
+    if link.platform == "podcast":
+        from . import podcasts
+
+        try:
+            return podcasts.probe(link.url)
+        except podcasts.NotAFeed as error:
+            raise Unavailable(str(error)) from error
+        except Exception as error:  # noqa: BLE001 - network trouble reading the feed
+            raise FetchError(f"couldn't read that feed ({error})") from error
     if link.kind == "video":
         info = _extract(link.url)
         platform_fields = video_fields(info, link.platform)
@@ -175,6 +184,16 @@ class NeedsOneVideo(FetchError):
 def list_videos(link: Link, limit: int | None = None, tiktok_uid: str | None = None):
     """Yield every video of a channel, playlist or profile, without downloading
     anything. YouTube channels are split into tabs, so each tab is listed."""
+    if link.platform == "podcast":
+        from . import podcasts
+
+        try:
+            yield from podcasts.list_episodes(link.url, limit)
+        except podcasts.NotAFeed as error:
+            raise Unavailable(str(error)) from error
+        except Exception as error:  # noqa: BLE001
+            raise FetchError(f"couldn't read that feed ({error})") from error
+        return
     if link.kind == "video":
         yield video_fields(_extract(link.url), link.platform)
         return

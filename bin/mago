@@ -64,7 +64,7 @@ ExecStart=$(command_for "$service")
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:$LOGS/$service.log
-StandardError=inherit
+StandardError=append:$LOGS/$service.log
 # The worker finishes the video it is on before it exits.
 TimeoutStopSec=$([[ $service == worker ]] && echo 600 || echo 15)
 KillMode=mixed

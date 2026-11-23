@@ -48,7 +48,12 @@ export function Thumb({ path, blur, shape, platform, duration, status, progress 
           className={waiting || unavailable ? "saturate-[0.35] brightness-[0.6]" : working ? "brightness-[0.55]" : ""}
         />
       )}
-      {platform && (
+      {!src && platform && (
+        <span className="absolute inset-0 grid place-items-center opacity-70">
+          <PlatformMark platform={platform} className="size-9" />
+        </span>
+      )}
+      {src && platform && (
         <span className="absolute left-1.5 top-1.5 grid place-items-center rounded-md bg-white/95 p-[3px] shadow-sm">
           <PlatformMark platform={platform} className="size-4" />
         </span>

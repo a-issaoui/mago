@@ -33,7 +33,21 @@ def process_video(conn: sqlite3.Connection, video_id: int, engine: Engine, audio
     audio_dir = audio_dir or config.AUDIO_DIR
     audio_dir.mkdir(parents=True, exist_ok=True)
     audio: Path | None = None
+    keep_audio = False
     try:
+        if video["platform"] in ("file", "podcast"):  # no captions to look for: go straight to the audio
+            if video["platform"] == "file":
+                from . import files
+
+                audio, keep_audio = files.path_of(video), True  # the file is the library's copy: keep it for playback
+                if not audio.exists():
+                    raise fetch.Unavailable("the file is no longer in Mago's media folder")
+            else:
+                from . import podcasts
+
+                library.set_status(conn, video_id, "downloading")
+                audio = podcasts.download(video["url"], audio_dir, video["platform_video_id"])
+            return _listen(conn, video_id, video, engine, settings, audio)
         with fetch.VideoSession(video["url"], video["platform"], audio_dir) as session:
             library.set_status(conn, video_id, "captions")
             library.update_video(conn, video_id, session.load())
@@ -50,22 +64,27 @@ def process_video(conn: sqlite3.Connection, video_id: int, engine: Engine, audio
                 return {"status": "done", "method": "captions", "segments": len(found["segments"]), "device": None}
             library.set_status(conn, video_id, "downloading")
             audio = session.download_audio()
-        library.set_status(conn, video_id, "transcribing")
-        last_shown = [0.0]
-
-        def on_progress(fraction: float) -> None:
-            if fraction - last_shown[0] >= 0.02 or fraction >= 1:
-                last_shown[0] = fraction
-                conn.execute("UPDATE videos SET progress = ? WHERE id = ?", (round(fraction, 3), video_id))
-
         video = library.get_video(conn, video_id) or video  # now with the title and channel filled in
-        result = engine.transcribe(audio, settings["language"] or None, settings["translate"] == "1", on_progress,
-                                   hint=whisper_hint(video))
-        library.save_transcript(conn, video_id, result["segments"], "whisper", result["language"])
-        return {"status": "done", "method": "whisper", "segments": len(result["segments"]), "device": result["device"]}
+        return _listen(conn, video_id, video, engine, settings, audio)
     except fetch.Unavailable as error:
         library.set_status(conn, video_id, "skipped", str(error)[:500])
         return {"status": "skipped", "method": None, "segments": 0, "device": None}
     finally:
-        if audio is not None:
+        if audio is not None and not keep_audio:
             audio.unlink(missing_ok=True)  # the transcript is what we keep
+
+
+def _listen(conn: sqlite3.Connection, video_id: int, video: dict, engine: Engine, settings: dict, audio: Path) -> dict:
+    """Whisper on one audio file, with progress written to the video's row."""
+    library.set_status(conn, video_id, "transcribing")
+    last_shown = [0.0]
+
+    def on_progress(fraction: float) -> None:
+        if fraction - last_shown[0] >= 0.02 or fraction >= 1:
+            last_shown[0] = fraction
+            conn.execute("UPDATE videos SET progress = ? WHERE id = ?", (round(fraction, 3), video_id))
+
+    result = engine.transcribe(audio, settings["language"] or None, settings["translate"] == "1", on_progress,
+                               hint=whisper_hint(video))
+    library.save_transcript(conn, video_id, result["segments"], "whisper", result["language"])
+    return {"status": "done", "method": "whisper", "segments": len(result["segments"]), "device": result["device"]}

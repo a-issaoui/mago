@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useLive } from "@/components/live";
 import { Thumb } from "@/components/thumb";
-import { isWorking, shortDate, statusLabel, type Video } from "@/lib/api";
+import { isWorking, platformName, shortDate, statusLabel, type Video } from "@/lib/api";
 
 const dotColor = (video: Video) =>
   video.status === "done" ? "bg-sea" : video.status === "failed" || video.status === "skipped" ? "bg-amber" : isWorking(video.status) ? "bg-murex" : "bg-mute";
@@ -14,7 +14,7 @@ export function VideoCard({ video, showSource = false, eager = false }: { video:
   const paused = video.status === "queued" && (snapshot?.paused.includes(video.platform) ?? false);
   const meta = paused ? "Paused" : video.status === "done" ? shortDate(video.published_at) || statusLabel(video) : statusLabel(video);
   return (
-    <Link href={`/v/${video.id}`} className={`card group block min-w-0 rounded-[10px] ${video.shape}`} title={video.title ?? undefined} aria-label={`${video.title || "Untitled video"}, ${video.platform === "youtube" ? "YouTube" : "TikTok"}, ${meta}`}>
+    <Link href={`/v/${video.id}`} className={`card group block min-w-0 rounded-[10px] ${video.shape}`} title={video.title ?? undefined} aria-label={`${video.title || "Untitled video"}, ${platformName(video.platform)}, ${meta}`}>
       <Thumb
         path={video.thumb_path}
         blur={video.thumb_blur}

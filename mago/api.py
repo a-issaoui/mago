@@ -22,7 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, export, fetch, jobs, library, meaning
+from . import config, db, export, fetch, files, jobs, library, meaning
 from .links import UnsupportedLink, detect
 
 config.ensure_dirs()
@@ -43,6 +43,7 @@ async def require_mago_header(request: Request, call_next):
 
 for folder in ("thumbs", "avatars"):  # never the whole data directory: the database lives there
     app.mount(f"/media/{folder}", StaticFiles(directory=config.DATA_DIR / folder), name=folder)
+app.mount("/media/files", StaticFiles(directory=files.media_dir()), name="files")  # the owner's own audio and video files
 
 _preview_cache: dict[str, tuple[float, dict]] = {}
 _VIDEO_LIST_COLUMNS = (
@@ -110,6 +111,11 @@ class HighlightBody(BaseModel):
 
 class NoteBody(BaseModel):
     note: str = Field(max_length=4000)
+
+
+class UploadBody(BaseModel):
+    name: str = Field(min_length=1, max_length=300)
+    size: int = Field(gt=0, le=files.MAX_BYTES)
 
 
 class PauseBody(BaseModel):
@@ -182,6 +188,58 @@ def add_source(body: UrlBody, conn: sqlite3.Connection = Conn):
     return _with_covers(conn, [_source(conn, source_id)])[0]
 
 
+# Uploading a file from this computer. The web server in front buffers request bodies in memory
+# (10 MB at most), so the browser sends the file in pieces and Mago puts them back together.
+_UPLOAD_ID = r"^[0-9a-f]{16}\.\w{2,5}$"
+
+
+@app.post("/api/files", status_code=201)
+def start_upload(body: UploadBody):
+    try:
+        upload_id = files.new_name(body.name)
+    except files.BadFile as error:
+        raise HTTPException(422, str(error)) from error
+    (files.uploads_dir() / upload_id).write_bytes(b"")
+    return {"upload_id": upload_id, "chunk_bytes": 6 * 1024 * 1024}
+
+
+@app.put("/api/files/{upload_id}/chunk", status_code=204)
+async def upload_chunk(upload_id: str, request: Request, offset: int = Query(ge=0)):
+    import re
+
+    if not re.fullmatch(_UPLOAD_ID, upload_id):
+        raise HTTPException(404, "No such upload.")
+    path = files.uploads_dir() / upload_id
+    if not path.is_file():
+        raise HTTPException(404, "No such upload.")
+    if path.stat().st_size != offset:  # a piece arrived twice or out of order: tell the browser where we are
+        raise HTTPException(409, f"expected offset {path.stat().st_size}")
+    data = await request.body()
+    if offset + len(data) > files.MAX_BYTES:
+        path.unlink(missing_ok=True)
+        raise HTTPException(413, "That file is larger than 8 GB.")
+    with open(path, "ab") as out:
+        out.write(data)
+
+
+@app.post("/api/files/{upload_id}/finish", status_code=201)
+def finish_upload(upload_id: str, body: UploadBody, conn: sqlite3.Connection = Conn):
+    import re
+
+    path = files.uploads_dir() / upload_id
+    if not re.fullmatch(_UPLOAD_ID, upload_id) or not path.is_file():
+        raise HTTPException(404, "No such upload.")
+    if path.stat().st_size != body.size:
+        raise HTTPException(409, "The upload is incomplete. Try again.")
+    stored = files.media_dir() / upload_id
+    path.rename(stored)
+    try:
+        video_id = files.register(conn, stored, body.name)
+    except files.BadFile as error:
+        raise HTTPException(422, str(error)) from error
+    return {"video_id": video_id}
+
+
 @app.get("/api/sources")
 def sources(conn: sqlite3.Connection = Conn):
     return _with_covers(conn, library.list_sources(conn))
@@ -199,7 +257,12 @@ def source(source_id: int, conn: sqlite3.Connection = Conn):
 
 @app.delete("/api/sources/{source_id}", status_code=204)
 def delete_source(source_id: int, conn: sqlite3.Connection = Conn):
-    _source(conn, source_id)
+    found = _source(conn, source_id)
+    if found["platform"] == "file":  # the library's copy of the owner's file goes with it
+        try:
+            files.path_of(found).unlink(missing_ok=True)
+        except files.BadFile:
+            pass
     conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
 
 
@@ -249,7 +312,7 @@ def videos(
     source_id: int | None = None,
     status: Literal["done", "working", "failed", "listed"] | None = None,
     sort: Literal["newest", "oldest", "views", "longest", "recent", "continue"] = "newest",
-    platform: Literal["youtube", "tiktok"] | None = None,
+    platform: Literal["youtube", "tiktok", "podcast", "file"] | None = None,
     single: bool = False,
     collection_id: int | None = None,
     q: str = Query(default="", max_length=200),
@@ -325,6 +388,22 @@ def video(video_id: int, conn: sqlite3.Connection = Conn):
     return {"video": found, "segments": segments, "channel": channel,
             "original": {"id": original["id"], "title": original["title"], "platform": original["platform"]} if original else None,
             "copies": [dict(row) for row in copies]}
+
+
+@app.delete("/api/videos/{video_id}", status_code=204)
+def delete_video(video_id: int, conn: sqlite3.Connection = Conn):
+    """Remove one video and its transcript. A local file's stored copy is deleted too."""
+    found = library.get_video(conn, video_id)
+    if found is None:
+        raise HTTPException(404, "No such video.")
+    if found["platform"] == "file":
+        try:
+            files.path_of(found).unlink(missing_ok=True)
+        except files.BadFile:
+            pass
+    conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+    conn.execute("DELETE FROM sources WHERE id = ? AND kind = 'video' AND NOT EXISTS (SELECT 1 FROM videos WHERE source_id = ?)",
+                 (found["source_id"], found["source_id"]))
 
 
 @app.get("/api/videos/{video_id}/source")
@@ -543,7 +622,7 @@ def export_video(video_id: int, format: Literal["txt", "srt", "vtt", "json", "md
 @app.get("/api/search")
 def search(
     q: str = Query(max_length=300),
-    platform: Literal["youtube", "tiktok"] | None = None,
+    platform: Literal["youtube", "tiktok", "podcast", "file"] | None = None,
     source_id: int | None = None,
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -615,7 +694,7 @@ def activity_snapshot(conn: sqlite3.Connection) -> dict:
         for name in ("youtube", "tiktok")
         if int(runtime.get(f"pause_{name}_until", 0)) > now
     ]
-    platforms = {name: {"total": 0, "done": 0, "working": 0, "failed": 0} for name in ("youtube", "tiktok")}
+    platforms = {name: {"total": 0, "done": 0, "working": 0, "failed": 0} for name in ("youtube", "tiktok", "podcast", "file")}
     for row in conn.execute("SELECT platform, status, count(*) AS n FROM videos GROUP BY platform, status"):
         bucket = "done" if row["status"] == "done" else "failed" if row["status"] in ("failed", "skipped") else "working"
         if row["status"] != "listed":

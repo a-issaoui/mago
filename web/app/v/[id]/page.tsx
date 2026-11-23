@@ -385,7 +385,17 @@ function VideoView() {
         <div className="max-xl:contents xl:sticky xl:top-24 xl:self-start">
           <div ref={playerBox} className="max-xl:sticky max-xl:top-14 max-xl:z-20 max-xl:-mx-4 max-xl:bg-night max-xl:px-4 max-xl:py-2 sm:max-xl:-mx-6 sm:max-xl:px-6 lg:max-xl:top-16 lg:max-xl:-mx-10 lg:max-xl:px-10">
             {done ? (
-              <Player ref={player} platform={video.platform} videoId={video.platform_video_id} shape={video.shape} start={start} title={video.title ?? "Video"} onTime={onTime} />
+              <Player
+                ref={player}
+                platform={video.platform}
+                videoId={video.platform_video_id}
+                shape={video.shape}
+                start={start}
+                title={video.title ?? "Video"}
+                mediaUrl={video.platform === "file" ? `/media/files/${video.url.replace("file://", "")}` : video.platform === "podcast" ? video.url : undefined}
+                audioOnly={video.platform === "podcast" || (video.platform === "file" && !video.thumb_path)}
+                onTime={onTime}
+              />
             ) : (
               <Thumb path={video.thumb_path} blur={video.thumb_blur} shape={video.shape} size="lg" status={video.status} progress={video.progress} eager className={video.shape === "tall" ? "mx-auto max-h-[44dvh] xl:max-h-[70dvh]" : ""} />
             )}
@@ -406,12 +416,25 @@ function VideoView() {
                 <span className="font-medium text-ink">{video.channel_name || video.source_handle}</span>
               )}
               <span className="tabular">{[shortDate(video.published_at), video.view_count != null ? `${compact(video.view_count)} views` : "", clock(video.duration_s)].filter(Boolean).join(", ")}</span>
-              <a href={video.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center gap-1 underline decoration-line underline-offset-4 hover:text-ink">
-                {`Open on ${platformName(video.platform)}`}
-                <ExternalLinkIcon className="size-3" />
-              </a>
+              {video.platform !== "file" && (
+                <a href={video.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center gap-1 underline decoration-line underline-offset-4 hover:text-ink">
+                  {video.platform === "podcast" ? "Open the audio file" : `Open on ${platformName(video.platform)}`}
+                  <ExternalLinkIcon className="size-3" />
+                </a>
+              )}
             </p>
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {!inChannel && (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    const gone = await act(() => api(`/videos/${video.id}`, { method: "DELETE" }).then(() => true), "Removed from your library");
+                    if (gone) router.push("/");
+                  }}
+                >
+                  Remove
+                </Button>
+              )}
               <CollectionPicker videoId={video.id} collections={collections.data ?? []} memberOf={video.collection_ids ?? []} onChanged={() => { reload(); collections.reload(); }} />
             </div>
             {data.original && (
