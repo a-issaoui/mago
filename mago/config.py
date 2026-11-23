@@ -25,6 +25,8 @@ DEFAULT_SETTINGS = {
     # 5-10 s between videos; captions are throttled separately and harder (429 after ~90 quick ones).
     "youtube_delay_s": "6",
     "youtube_per_hour": "250",  # 0 = no hourly budget
+    "paused": "",  # platforms the worker must not touch: "", "youtube", "tiktok" or "youtube,tiktok"
+    "skip_repeats": "1",  # don't transcribe a re-upload (same channel, same title, same length)
     "resync_hours": "0",  # check channels for new videos this often; 0 = only by hand
 }
 

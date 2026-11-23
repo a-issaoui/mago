@@ -113,3 +113,65 @@ def test_no_duplicate_active_jobs(conn):
     assert jobs.enqueue_transcribe(conn, video_id) == jobs.enqueue_transcribe(conn, video_id)
     with pytest.raises(Exception):
         conn.execute("INSERT INTO jobs(video_id, kind) VALUES (?, 'transcribe')", (video_id,))
+
+
+LONG = ("the quick brown fox jumps over the lazy dog while seven wise owls watch from an old oak tree and "
+        "count every star that falls into the quiet river below the hill where nobody ever goes at night").split()
+
+
+def lines(words, start=0.0):
+    return [{"start": start + i, "end": start + i + 1, "text": " ".join(words[i:i + 6])} for i in range(0, len(words), 6)]
+
+
+def test_same_words_under_another_id_are_marked_and_left_out_of_search(conn):
+    source_id = library.add_source(conn, "https://www.youtube.com/@jawed")
+    ids = []
+    for key, duration, published in (("aaaaaaaaaa1", 600, "2024-01-01"), ("aaaaaaaaaa2", 600, "2025-01-01"), ("aaaaaaaaaa3", 30, "2025-02-01")):
+        ids.append(library.upsert_video(conn, source_id, "youtube", {
+            "platform_video_id": key, "url": f"https://www.youtube.com/watch?v={key}", "title": key,
+            "duration_s": duration, "published_at": published})[0])
+    full = LONG * 3 + "and then a part that only the long video has which goes on for quite a while longer than that".split() * 4
+    library.save_transcript(conn, ids[0], lines(full), "captions", "en")
+    library.save_transcript(conn, ids[1], lines(full), "captions", "en")  # re-upload
+    library.save_transcript(conn, ids[2], lines(LONG * 3), "captions", "en")  # a clip of it
+    marks = {row["id"]: (row["duplicate_of"], row["duplicate_kind"]) for row in conn.execute("SELECT id, duplicate_of, duplicate_kind FROM videos")}
+    assert marks == {ids[0]: (None, None), ids[1]: (ids[0], "repeat"), ids[2]: (ids[0], "clip")}
+    assert {hit["video_id"] for hit in library.search(conn, "owls")} == {ids[0]}
+    assert len({hit["video_id"] for hit in library.search(conn, "owls", include_duplicates=True)}) == 3
+    library.save_transcript(conn, ids[1], lines("something entirely different now " .split() * 20), "whisper", "en")
+    assert library.get_video(conn, ids[1])["duplicate_of"] is None  # re-transcribed: no longer a copy
+
+
+def test_reuploads_are_not_transcribed_twice(conn, monkeypatch):
+    from mago import fetch
+
+    listing = [
+        {"platform_video_id": "1", "url": "u1", "title": "How to plant a tree in spring", "duration_s": 61},
+        {"platform_video_id": "2", "url": "u2", "title": "how to plant a tree in spring ", "duration_s": 61.4},
+        {"platform_video_id": "3", "url": "u3", "title": "How to plant a tree in spring", "duration_s": 95},  # same title, other video
+        {"platform_video_id": "4", "url": "u4", "title": "Part 2", "duration_s": 61},
+        {"platform_video_id": "5", "url": "u5", "title": "Part 2", "duration_s": 61},  # too short a title to judge
+    ]
+    monkeypatch.setattr(fetch, "list_videos", lambda link, limit=None, **_: iter(listing))
+    source_id = library.add_source(conn, "https://www.tiktok.com/@gardener")
+    result = library.sync_source(conn, source_id)
+    assert (result["new"], result["repeats"], len(result["new_video_ids"])) == (5, 1, 4)
+    repeat = conn.execute("SELECT status, duplicate_of, error FROM videos WHERE platform_video_id = '2'").fetchone()
+    assert repeat["status"] == "skipped" and repeat["duplicate_of"] and "not transcribed again" in repeat["error"]
+    db.set_setting(conn, "skip_repeats", "0")
+    listing.append({"platform_video_id": "6", "url": "u6", "title": "How to plant a tree in spring", "duration_s": 61})
+    assert library.sync_source(conn, source_id)["repeats"] == 0
+
+
+def test_passage_search_finds_phrases_across_lines_and_ranks_loosely(conn):
+    _, video_id = add_video(conn)
+    library.save_transcript(conn, video_id, [
+        {"start": 0, "end": 2, "text": "The cool thing about these guys is that they have really"},
+        {"start": 2, "end": 4, "text": "really long trunks and that is cool."}], "captions", "en")
+    assert library.search(conn, "guys trunks") == []  # the two words are in different caption lines
+    hit = library.search_passages(conn, "guys trunks")[0]
+    assert (hit["video_id"], hit["match"]) == (video_id, "all words")
+    assert library.search_passages(conn, "zoo")[0]["video_id"] == video_id  # the title is searched too
+    assert library.search_passages(conn, "trunk giraffes")[0]["match"] == "some words"  # stemmed, any word
+    assert library.search_passages(conn, "trunks", published_after="2030-01-01") == []
+    assert library.search_passages(conn, "xylophone") == []

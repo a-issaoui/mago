@@ -95,11 +95,22 @@ data/                   the library: mago.db, thumbs/, avatars/, logs/ (not in g
   an hour) and Activity shows when it resumes. The pause does not use up a video's retries.
 - **Single videos and their channel.** Adding one video never adds its channel. The video page and the paste box
   offer "the whole channel" as a separate, deliberate step. If the channel is added later, the video moves into it.
+- **Stopping downloads.** Activity has "Stop all downloads" and a Stop button per platform. The video in
+  progress finishes; nothing else is fetched until you resume. The choice survives restarts.
+- **Duplicates.** The same video can't be stored twice (any link form, single video or inside its channel).
+  A re-upload in the same channel (same title, same length) is listed but not transcribed again (Settings,
+  "Skip re-uploads"). After transcription, a video that says the same words as another is marked as a repeat
+  or a clip of it and left out of search. `python -m mago.reindex` rebuilds these marks.
+- **Whole-channel copy and export.** A channel page has "Copy all" and "Export all": one text file, one
+  Markdown file with timestamps, JSON, or a zip with Markdown and SRT per video.
+- **TikTok profiles that won't list.** Some profiles can't be listed by @name (an open yt-dlp bug). Paste one
+  of their videos first; "Transcribe the whole channel" on that video's page then works.
 - **A video belongs to one source.** A playlist whose videos are already in a channel you added shows as empty.
 - **No accounts, so two guards instead.** The API and the web server only answer to `mago.test`, `127.0.0.1` and
   `localhost` (set `MAGO_HOSTS` for the web server to change that), and every write needs an `X-Mago: 1` header.
   Together these stop another website open in the same browser from reading or changing the library.
-- **Search matches within one spoken line**, so a phrase split across two caption lines is not found.
+- **Search** looks in single caption lines first (exact timestamps), then in passages of a few sentences, so a
+  phrase that runs across lines is still found. The MCP search uses passages and at most two hits per video.
 - **TikTok profiles have no avatar or banner** through yt-dlp; their cards use the latest thumbnails instead.
 - **Terms of service.** Bulk downloading is against YouTube's and TikTok's terms. This is a private research tool;
   do not expose it to the internet.

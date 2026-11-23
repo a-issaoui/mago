@@ -58,6 +58,11 @@ export default function ActivityPage() {
   const platforms = snapshot?.platforms ?? data?.platforms;
   const pauses = (snapshot?.pauses ?? data?.pauses ?? []).filter((pause) => pause.until > now);
   const names: Platform[] = ["youtube", "tiktok"];
+  const stopped = snapshot?.paused ?? data?.paused ?? [];
+  async function setPaused(platform: Platform | "all", paused: boolean) {
+    await api("/queue/pause", { method: "POST", body: JSON.stringify({ platform, paused }) });
+    reload();
+  }
   const total = platforms ? names.reduce((sum, name) => sum + platforms[name].total, 0) : 0;
   const sum = (field: "done" | "working" | "failed") => (platforms ? names.reduce((value, name) => value + platforms[name][field], 0) : 0);
 
@@ -92,7 +97,16 @@ export default function ActivityPage() {
         <section aria-label="Overall progress" className="mt-7 rounded-2xl border border-line bg-surface p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <p className="tabular text-lg font-semibold">{`${sum("done")} of ${total} videos transcribed`}</p>
-            {data && data.eta_s > 0 && sum("working") > 0 && <p className="text-sm text-mute">{`${roughDuration(data.eta_s)} left at the current pace`}</p>}
+            {data && data.eta_s > 0 && sum("working") > 0 && stopped.length === 0 && <p className="text-sm text-mute">{`${roughDuration(data.eta_s)} left at the current pace`}</p>}
+            {sum("working") > 0 && (
+              <button
+                type="button"
+                onClick={() => setPaused("all", stopped.length < 2)}
+                className={`h-9 rounded-full px-4 text-sm font-semibold ${stopped.length === 2 ? "bg-murex text-on-murex hover:brightness-110" : "border border-line hover:bg-raised"}`}
+              >
+                {stopped.length === 2 ? "Resume downloads" : "Stop all downloads"}
+              </button>
+            )}
           </div>
           <Progress done={sum("done")} working={sum("working")} failed={sum("failed")} total={total} className="mt-3 h-2.5" />
           <div className="mt-3">
@@ -107,9 +121,15 @@ export default function ActivityPage() {
                     <PlatformMark platform={name} className="size-[18px]" />
                     {platformName(name)}
                     <span className="ml-auto font-normal text-mute">{`${platforms[name].done} of ${platforms[name].total}`}</span>
+                    {platforms[name].working > 0 && (
+                      <button type="button" onClick={() => setPaused(name, !stopped.includes(name))} className="rounded-full border border-line px-2.5 py-0.5 text-xs font-semibold hover:bg-raised">
+                        {stopped.includes(name) ? "Resume" : "Stop"}
+                      </button>
+                    )}
                   </p>
                   <Progress {...platforms[name]} className="mt-2 h-1.5" label={`${platformName(name)} transcribed`} />
-                  {pause && (
+                  {stopped.includes(name) && <p className="mt-2 text-xs text-amber">{`Stopped by you. Nothing is downloaded from ${platformName(name)} until you resume.`}</p>}
+                  {pause && !stopped.includes(name) && (
                     <p className="mt-2 text-xs text-amber">
                       {pause.reason === "budget"
                         ? `Paused: this hour's YouTube limit is used up. Resumes in ${wait(pause.until - now)}.`
@@ -130,7 +150,7 @@ export default function ActivityPage() {
         {idle && <p className="mt-2 text-mute">Nothing is running. Paste a link in the library to add videos.</p>}
         {!idle && active.length === 0 && (snapshot?.listing.length ?? 0) === 0 && (
           <p className="mt-2 text-mute">
-            {pauses.length > 0 ? "Waiting. The platforms with videos left are paused; see above for when they resume." : "Waiting a few seconds before the next video."}
+            {stopped.length > 0 ? "Stopped. Press Resume above to carry on." : pauses.length > 0 ? "Waiting. The platforms with videos left are paused; see above for when they resume." : "Waiting a few seconds before the next video."}
           </p>
         )}
         <ul className="divide-y divide-line">

@@ -12,7 +12,7 @@ LISTING = [{"platform_video_id": f"vid{i:08d}", "url": f"https://www.youtube.com
 @pytest.fixture
 def worker(conn, monkeypatch):
     monkeypatch.setattr(fetch, "probe", lambda link: {"title": "jawed", "handle": "@jawed", "avatar_url": None, "banner_url": None})
-    monkeypatch.setattr(fetch, "list_videos", lambda link, limit=None: iter(LISTING))
+    monkeypatch.setattr(fetch, "list_videos", lambda link, limit=None, **_: iter(LISTING))
     monkeypatch.setattr(thumbs, "save_missing_thumbs", lambda conn, source_id=None: 0)
     monkeypatch.setattr(thumbs, "save_video_thumb", lambda conn, video: False)
     instance = Worker(conn)
@@ -127,3 +127,17 @@ def test_youtube_hourly_budget(conn, worker, monkeypatch):
     runtime = db.get_runtime(conn)
     assert runtime["pause_youtube_reason"] == "budget" and int(runtime["pause_youtube_until"]) > time.time() + 3000
     assert conn.execute("SELECT attempts FROM jobs WHERE state = 'pending'").fetchone()[0] == 0
+
+
+def test_paused_platforms_are_left_alone(conn, worker, monkeypatch):
+    source_id = library.add_source(conn, URL)
+    jobs.enqueue_list(conn, source_id)
+    db.set_setting(conn, "paused", "youtube,tiktok")
+    assert not worker.step()  # even the listing waits
+    db.set_setting(conn, "paused", "tiktok")
+    assert worker.step() and statuses(conn) == ["queued"] * 3
+    monkeypatch.setattr(pipeline, "process_video", fake_process(["ok", "ok", "ok"]))
+    db.set_setting(conn, "paused", "youtube")
+    assert not worker.step() and statuses(conn) == ["queued"] * 3
+    db.set_setting(conn, "paused", "")
+    assert worker.step() and statuses(conn)[0] == "done"

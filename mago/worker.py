@@ -54,7 +54,7 @@ class Worker:
                 "UPDATE sources SET title = ?, handle = coalesce(handle, ?) WHERE id = ?",
                 (preview["channel"] or preview["title"], preview["handle"], source_id),
             )
-        return f"listed {result['listed']}, new {result['new']}"
+        return f"listed {result['listed']}, new {result['new']}, repeats skipped {result['repeats']}"
 
     def run_transcribe(self, job: dict) -> str:
         settings = db.get_settings(self.conn)
@@ -88,7 +88,8 @@ class Worker:
 
     def step(self) -> bool:
         """Run one job. Returns False when the queue is empty."""
-        job = jobs.claim(self.conn)
+        paused = tuple(name for name in db.get_settings(self.conn)["paused"].split(",") if name)
+        job = jobs.claim(self.conn, paused)
         if job is None:
             return False
         platform = None
@@ -116,7 +117,7 @@ class Worker:
                 log.info("rate limit detail: %s", str(error)[:200])
             else:
                 self._retry_or_fail(job, message, jobs.RATE_LIMIT_ATTEMPTS, True)
-        except fetch.Unavailable as error:  # a whole source that is gone
+        except (fetch.Unavailable, fetch.NeedsOneVideo) as error:  # retrying won't change the answer
             jobs.fail(self.conn, job, str(error))
         except Exception as error:  # noqa: BLE001 - one bad video must not stop the queue
             log.exception("job %s failed", job["id"])

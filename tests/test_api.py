@@ -87,3 +87,19 @@ def test_adding_a_video_already_in_a_channel_returns_that_channel(client):
     source_id, _ = seed()
     added = client.post("/api/sources", json={"url": "https://youtu.be/jNQXAC9IVRw"}).json()
     assert added["id"] == source_id and len(client.get("/api/sources").json()) == 1
+
+
+def test_pause_and_channel_export(client):
+    source_id, video_id = seed()
+    assert client.post("/api/queue/pause", json={"platform": "all", "paused": True}).json() == {"paused": ["tiktok", "youtube"]}
+    assert client.get("/api/activity").json()["paused"] == ["tiktok", "youtube"]
+    assert client.post("/api/queue/pause", json={"platform": "tiktok", "paused": False}).json() == {"paused": ["youtube"]}
+    client.post("/api/queue/pause", json={"platform": "all", "paused": False})
+    text = client.get(f"/api/sources/{source_id}/export", params={"format": "txt"})
+    assert "Me at the zoo" in text.text and "elephants" in text.text and "jawed.txt" in text.headers["content-disposition"]
+    assert client.get(f"/api/sources/{source_id}/export", params={"format": "md"}).text.startswith("# @jawed")
+    assert len(client.get(f"/api/sources/{source_id}/export", params={"format": "json"}).json()["videos"]) == 1
+    archive = client.get(f"/api/sources/{source_id}/export", params={"format": "zip"})
+    import io, zipfile
+    names = zipfile.ZipFile(io.BytesIO(archive.content)).namelist()
+    assert len(names) == 2 and all(name.startswith("jawed/") and ".." not in name for name in names)

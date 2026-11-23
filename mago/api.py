@@ -4,6 +4,7 @@ Run with:  uvicorn mago.api:app --host 127.0.0.1 --port 8010
 """
 
 import asyncio
+import io
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -45,7 +47,7 @@ for folder in ("thumbs", "avatars"):  # never the whole data directory: the data
 _preview_cache: dict[str, tuple[float, dict]] = {}
 _VIDEO_LIST_COLUMNS = (
     "v.id, v.source_id, v.platform, v.platform_video_id, v.url, v.title, v.published_at, v.duration_s, v.view_count, "
-    "v.thumb_path, v.thumb_blur, v.shape, v.language, v.status, v.error, v.method, v.progress, v.transcribed_at"
+    "v.thumb_path, v.thumb_blur, v.shape, v.language, v.status, v.error, v.method, v.progress, v.transcribed_at, v.duplicate_of, v.duplicate_kind"
 )
 _SORTS = {
     "newest": "v.published_at IS NULL, v.published_at DESC, v.id",
@@ -82,6 +84,12 @@ class SettingsBody(BaseModel):
     tiktok_delay_s: float | None = Field(default=None, ge=0, le=120)
     youtube_delay_s: float | None = Field(default=None, ge=0, le=120)
     youtube_per_hour: int | None = Field(default=None, ge=0, le=2000)
+    skip_repeats: Literal["0", "1"] | None = None
+
+
+class PauseBody(BaseModel):
+    platform: Literal["all", "youtube", "tiktok"]
+    paused: bool
     resync_hours: float | None = Field(default=None, ge=0, le=720)
 
 
@@ -123,6 +131,8 @@ def preview(body: UrlBody, conn: sqlite3.Connection = Conn):
     else:
         try:
             result = fetch.probe(link)
+        except fetch.NeedsOneVideo as error:
+            raise HTTPException(422, str(error)) from error
         except fetch.Unavailable as error:
             raise HTTPException(404, f"That link isn't available: {error}") from error
         except fetch.RateLimited as error:
@@ -166,6 +176,39 @@ def source(source_id: int, conn: sqlite3.Connection = Conn):
 def delete_source(source_id: int, conn: sqlite3.Connection = Conn):
     _source(conn, source_id)
     conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+
+
+@app.get("/api/sources/{source_id}/export")
+def export_source(source_id: int, format: Literal["txt", "md", "json", "zip"] = "txt", conn: sqlite3.Connection = Conn):
+    """Every finished transcript of a channel, newest first, as one file (or a zip with one file per video)."""
+    found = _source(conn, source_id)
+    rows = conn.execute(
+        "SELECT id FROM videos WHERE source_id = ? AND status = 'done' ORDER BY published_at IS NULL, published_at DESC, id", (source_id,)
+    ).fetchall()
+    videos = [(library.get_video(conn, row["id"]), library.get_segments(conn, row["id"])) for row in rows]
+    name = export.safe_name(found["title"] or found["handle"] or "channel", "channel")
+    if format == "zip":
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for video, segments in videos:
+                stem = f"{(video['published_at'] or '')[:10] or 'undated'}_{export.safe_name(video['title'] or '')}_{video['platform_video_id']}"
+                archive.writestr(f"{name}/{stem}.md", export.render(video, segments, "md"))
+                archive.writestr(f"{name}/{stem}.srt", export.render(video, segments, "srt"))
+        return Response(buffer.getvalue(), media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
+    body = export.render_many(found, videos, format)
+    return Response(body, media_type=f"{export.FORMATS[format]}; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.{format}"'})
+
+
+@app.post("/api/queue/pause")
+def pause_queue(body: PauseBody, conn: sqlite3.Connection = Conn):
+    """Stop (or resume) downloads for one platform or both. The video in progress finishes first."""
+    current = {name for name in db.get_settings(conn)["paused"].split(",") if name}
+    names = {"youtube", "tiktok"} if body.platform == "all" else {body.platform}
+    current = current | names if body.paused else current - names
+    db.set_setting(conn, "paused", ",".join(sorted(current)))
+    return {"paused": sorted(current)}
 
 
 @app.post("/api/sources/{source_id}/sync")
@@ -232,7 +275,13 @@ def video(video_id: int, conn: sqlite3.Connection = Conn):
                        "source_id": known["id"] if known else None}
         except UnsupportedLink:
             channel = None
-    return {"video": found, "segments": segments, "channel": channel}
+    original = library.get_video(conn, found["duplicate_of"]) if found.get("duplicate_of") else None
+    copies = conn.execute(
+        "SELECT id, title, platform, duplicate_kind FROM videos WHERE duplicate_of = ? ORDER BY id LIMIT 20", (video_id,)
+    ).fetchall()
+    return {"video": found, "segments": segments, "channel": channel,
+            "original": {"id": original["id"], "title": original["title"], "platform": original["platform"]} if original else None,
+            "copies": [dict(row) for row in copies]}
 
 
 @app.post("/api/videos/{video_id}/retry")
@@ -274,6 +323,11 @@ def search(
     conn: sqlite3.Connection = Conn,
 ):
     hits = library.search(conn, q, platform, source_id, limit, offset)
+    loose = False
+    if not hits and offset == 0:
+        # Nothing in a single caption line: look in passages (a phrase can run across lines).
+        hits = library.search_passages(conn, q, platform, source_id, limit=limit, per_video=3)
+        loose = any(hit["match"] == "some words" for hit in hits)
     blurs = {}
     if hits:
         marks = ",".join("?" * len({h["video_id"] for h in hits}))
@@ -281,7 +335,7 @@ def search(
         blurs = {row["id"]: row for row in rows}
     for hit in hits:
         hit["thumb_blur"], hit["shape"] = blurs[hit["video_id"]]["thumb_blur"], blurs[hit["video_id"]]["shape"]
-    return {"query": q, "items": hits}
+    return {"query": q, "items": hits, "loose": loose}
 
 
 def activity_snapshot(conn: sqlite3.Connection) -> dict:
@@ -309,6 +363,7 @@ def activity_snapshot(conn: sqlite3.Connection) -> dict:
             platforms[row["platform"]][bucket] += row["n"]
         platforms[row["platform"]]["total"] += row["n"]
     return {
+        "paused": [name for name in db.get_settings(conn)["paused"].split(",") if name],
         "pauses": pauses,
         "platforms": platforms,
         "counts": counts,

@@ -110,6 +110,8 @@ def video_fields(info: dict, platform: str) -> dict:
     channel_url = f"https://www.tiktok.com/@{handle}" if handle else (info.get("uploader_url") or info.get("channel_url"))
     return {
         "channel_name": info.get("channel") or info.get("uploader"),
+        # TikTok's internal id for the profile: listing by it works when listing by @handle doesn't.
+        "channel_uid": info.get("channel_id") if platform == "tiktok" else None,
         "channel_url": channel_url,
         "shape": "tall" if tall else "wide",
         "platform_video_id": video_id,
@@ -138,7 +140,12 @@ def probe(link: Link) -> dict:
             "avatar_url": None, "banner_url": None, "video_count": 1,
             "duration_s": platform_fields["duration_s"], "channel_url": platform_fields["channel_url"],
         }
-    info = _extract(link.url, extract_flat=True, process=False, playlistend=1)
+    try:
+        info = _extract(link.url, extract_flat=True, process=False, playlistend=1)
+    except FetchError as error:
+        if "secondary user id" in str(error).lower():
+            raise NeedsOneVideo("TikTok didn't let Mago list this profile by its name. Paste one video from it instead; its page offers the whole channel.") from error
+        raise
     first = next(iter(info.get("entries") or []), None) or {}
     avatar, banner = _avatar_and_banner(info)
     if link.platform == "tiktok":
@@ -156,13 +163,19 @@ def probe(link: Link) -> dict:
     }
 
 
-def list_videos(link: Link, limit: int | None = None):
+class NeedsOneVideo(FetchError):
+    """TikTok wouldn't list this profile by its @handle. It can once one of its videos is known."""
+
+
+def list_videos(link: Link, limit: int | None = None, tiktok_uid: str | None = None):
     """Yield every video of a channel, playlist or profile, without downloading
     anything. YouTube channels are split into tabs, so each tab is listed."""
     if link.kind == "video":
         yield video_fields(_extract(link.url), link.platform)
         return
     urls = [link.url]
+    if link.platform == "tiktok" and link.kind == "profile" and tiktok_uid:
+        urls.append(f"tiktokuser:{tiktok_uid}")  # tried only if the @handle listing gives nothing
     if link.platform == "youtube" and link.kind == "channel":
         urls = [f"{link.url}/{tab}" for tab in _YOUTUBE_TABS]
     seen: set[str] = set()
@@ -179,11 +192,18 @@ def list_videos(link: Link, limit: int | None = None):
                 yield video_fields(entry, link.platform)
                 if limit and len(seen) >= limit:
                     return
+            if listed_any and link.platform == "tiktok":
+                return  # the fallback address would only list the same videos again
         except DownloadError as error:
             last_error = _classify(error)
         except FetchError as error:  # a channel without a Shorts or Live tab is normal
             last_error = error
     if not listed_any and last_error:
+        if "secondary user id" in str(last_error).lower():
+            raise NeedsOneVideo(
+                "TikTok didn't let Mago list this profile by its name. Paste one video from it first, "
+                "then use \"Transcribe the whole channel\" on that video's page."
+            ) from last_error
         raise last_error
 
 

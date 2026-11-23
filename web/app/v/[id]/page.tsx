@@ -50,7 +50,7 @@ function VideoView() {
   const { id } = useParams<{ id: string }>();
   const start = Math.max(0, Number(useSearchParams().get("t")) || 0);
   const key = useLiveKey(1500);
-  const { data, error, reload } = useApi<{ video: Video; segments: Segment[]; channel: ChannelOffer | null }>(`/videos/${id}`, key);
+  const { data, error, reload } = useApi<{ video: Video; segments: Segment[]; channel: ChannelOffer | null; original: { id: number; title: string | null } | null; copies: { id: number; title: string | null; duplicate_kind: string }[] }>(`/videos/${id}`, key);
   const router = useRouter();
   const [addingChannel, setAddingChannel] = useState(false);
   const player = useRef<PlayerHandle>(null);
@@ -137,6 +137,28 @@ function VideoView() {
           )}
           <span className="tabular text-mute">{[shortDate(video.published_at), video.view_count != null ? `${compact(video.view_count)} views` : "", clock(video.duration_s)].filter(Boolean).join(", ")}</span>
         </p>
+        {data.original && (
+          <p className="mt-4 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
+            {video.duplicate_kind === "clip" ? "A clip of " : "Says the same as "}
+            <Link href={`/v/${data.original.id}`} className="font-semibold underline decoration-line underline-offset-4 hover:decoration-current">
+              {data.original.title || "another video"}
+            </Link>
+            . Search shows the original only.
+          </p>
+        )}
+        {data.copies.length > 0 && (
+          <p className="mt-4 text-sm text-mute">
+            {`${data.copies.length === 1 ? "1 other video repeats" : `${data.copies.length} other videos repeat`} these words: `}
+            {data.copies.map((copy, index) => (
+              <span key={copy.id}>
+                {index > 0 && ", "}
+                <Link href={`/v/${copy.id}`} className="underline decoration-line underline-offset-4 hover:text-ink">
+                  {copy.title || "untitled"}
+                </Link>
+              </span>
+            ))}
+          </p>
+        )}
         {data.channel && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
             <p className="min-w-0 text-sm">
@@ -252,7 +274,9 @@ function VideoView() {
           <div className="rounded-2xl border border-line bg-surface p-6">
             <p className="text-lg font-semibold">{statusLabel(video)}</p>
             <p className="mt-1 max-w-prose text-sm text-mute">
-              {video.status === "skipped"
+              {video.status === "skipped" && video.duplicate_of
+                ? video.error
+                : video.status === "skipped"
                 ? `This video can't be reached, so it was left out. ${video.error ?? ""}`
                 : video.status === "failed"
                   ? `The transcript couldn't be made. ${video.error ?? ""}`
@@ -264,7 +288,7 @@ function VideoView() {
             </p>
             {!isWorking(video.status) && (
               <button type="button" onClick={retry} className="mt-4 h-10 rounded-full bg-murex px-5 text-sm font-semibold text-on-murex hover:brightness-110">
-                {video.status === "listed" ? "Transcribe this video" : "Try again"}
+                {video.status === "listed" || video.duplicate_of ? "Transcribe this video anyway" : "Try again"}
               </button>
             )}
           </div>

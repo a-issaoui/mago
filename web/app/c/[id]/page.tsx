@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { PlatformMark, SyncIcon } from "@/components/icons";
+import { CopyIcon, DownloadIcon, PlatformMark, SyncIcon } from "@/components/icons";
 import { useLiveKey } from "@/components/live";
 import { Legend, Progress } from "@/components/progress";
 import { Avatar, Banner, progressText } from "@/components/source-card";
@@ -34,6 +34,19 @@ export default function ChannelPage() {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE);
   const [confirming, setConfirming] = useState(false);
+  const [copied, setCopied] = useState("");
+  async function copyAll() {
+    setCopied("Copying");
+    try {
+      const response = await fetch(`/api/sources/${id}/export?format=txt`);
+      if (!response.ok) throw new Error();
+      await navigator.clipboard.writeText(await response.text());
+      setCopied("Copied");
+    } catch {
+      setCopied("Couldn't copy");
+    }
+    setTimeout(() => setCopied(""), 2200);
+  }
 
   const source = useApi<Source>(`/sources/${id}`, key);
   const params = new URLSearchParams({ source_id: id, sort, limit: String(limit) });
@@ -123,7 +136,35 @@ export default function ChannelPage() {
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {data && data.videos_done > 0 && (
+            <>
+              <button type="button" onClick={copyAll} className="flex h-9 items-center gap-2 rounded-full border border-line px-3.5 text-sm font-medium hover:bg-raised" title="Copy every transcript of this channel">
+                <CopyIcon className="size-4" />
+                <span aria-live="polite">{copied || "Copy all"}</span>
+              </button>
+              <details className="relative">
+                <summary className="flex h-9 cursor-pointer list-none items-center gap-2 rounded-full border border-line px-3.5 text-sm font-medium hover:bg-raised [&::-webkit-details-marker]:hidden">
+                  <DownloadIcon className="size-4" />
+                  Export all
+                </summary>
+                <ul className="absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                  {[
+                    { format: "txt", label: "One text file" },
+                    { format: "md", label: "One Markdown file, with timestamps" },
+                    { format: "json", label: "JSON, with timed lines" },
+                    { format: "zip", label: "Zip: Markdown and SRT per video" },
+                  ].map((item) => (
+                    <li key={item.format}>
+                      <a href={`/api/sources/${id}/export?format=${item.format}`} download className="block px-4 py-2 text-sm hover:bg-raised">
+                        {item.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </>
+          )}
           <label className="sr-only" htmlFor="title-filter">
             Filter by title
           </label>

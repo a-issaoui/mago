@@ -47,7 +47,7 @@ export function Nav() {
                 className="flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-mute hover:text-ink aria-[current=page]:bg-raised aria-[current=page]:text-ink"
               >
                 {label}
-                {href === "/activity" && busy > 0 && <BusyCount count={busy} />}
+                {href === "/activity" && busy > 0 && <BusyCount count={busy} stopped={(snapshot?.paused.length ?? 0) === 2} />}
               </Link>
             ))}
           </nav>
@@ -91,10 +91,10 @@ export function Nav() {
   );
 }
 
-function BusyCount({ count }: { count: number }) {
+function BusyCount({ count, stopped = false }: { count: number; stopped?: boolean }) {
   return (
-    <span className="tabular flex items-center gap-1 rounded-full bg-murex px-1.5 py-px text-[11px] font-semibold leading-4 text-on-murex" aria-label={`${count} in progress`}>
-      <span className="live-dot size-1.5 rounded-full bg-current" />
+    <span className={`tabular flex items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-semibold leading-4 ${stopped ? "bg-raised text-mute" : "bg-murex text-on-murex"}`} aria-label={stopped ? `${count} waiting, downloads stopped` : `${count} in progress`}>
+      <span className={`size-1.5 rounded-full bg-current ${stopped ? "" : "live-dot"}`} />
       {count > 999 ? "999+" : count}
     </span>
   );

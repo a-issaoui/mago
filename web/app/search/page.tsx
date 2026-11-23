@@ -56,7 +56,7 @@ function SearchView() {
   const search = new URLSearchParams({ q: query, limit: "60" });
   if (platform) search.set("platform", platform);
   if (sourceId) search.set("source_id", sourceId);
-  const results = useApi<{ items: Hit[] }>(query.length >= 2 ? `/search?${search}` : null);
+  const results = useApi<{ items: Hit[]; loose?: boolean }>(query.length >= 2 ? `/search?${search}` : null);
   const sources = useApi<Source[]>("/sources");
   const channels = sources.data?.filter((source) => source.kind !== "video") ?? [];
   const groups = results.data ? groupByVideo(results.data.items) : [];
@@ -132,6 +132,9 @@ function SearchView() {
         )}
         {results.data && groups.length === 0 && query.length >= 2 && (
           <p className="text-mute">{`Nobody said "${query}" in the videos you've transcribed. Try fewer words, or check the filters.`}</p>
+        )}
+        {groups.length > 0 && results.data?.loose && (
+          <p className="mb-3 text-sm text-amber">No line has all of these words. Showing the closest passages instead.</p>
         )}
         {groups.length > 0 && (
           <p className="tabular mb-6 text-sm text-mute">

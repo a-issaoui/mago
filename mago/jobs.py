@@ -35,13 +35,17 @@ def enqueue_transcribe(conn: sqlite3.Connection, video_id: int, priority: int = 
     return job_id
 
 
-def claim(conn: sqlite3.Connection) -> dict | None:
-    """Take the next job that is due. Listings and single videos go first."""
+def claim(conn: sqlite3.Connection, paused: tuple[str, ...] = ()) -> dict | None:
+    """Take the next job that is due. Listings and single videos go first.
+    Jobs of a paused platform are left where they are."""
+    marks = ",".join("?" * len(paused))
+    skip = f"AND coalesce(v.platform, s.platform) NOT IN ({marks}) " if paused else ""
     conn.execute("BEGIN IMMEDIATE")
     try:
         row = conn.execute(
-            "SELECT * FROM jobs WHERE state = 'pending' AND next_try_at <= datetime('now') "
-            "ORDER BY priority DESC, id LIMIT 1"
+            "SELECT j.* FROM jobs j LEFT JOIN videos v ON v.id = j.video_id LEFT JOIN sources s ON s.id = j.source_id "
+            f"WHERE j.state = 'pending' AND j.next_try_at <= datetime('now') {skip}"
+            "ORDER BY j.priority DESC, j.id LIMIT 1", paused,
         ).fetchone()
         if row:
             conn.execute(

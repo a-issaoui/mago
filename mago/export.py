@@ -39,6 +39,40 @@ def paragraphs(segments: list[dict], gap_s: float = 2.0, max_chars: int = 600) -
     return groups
 
 
+def render_many(source: dict, videos: list[tuple[dict, list[dict]]], fmt: str) -> str:
+    """Every transcript of a channel in one file: txt, md or json."""
+    name = source.get("title") or source.get("handle") or source["url"]
+    if fmt == "json":
+        keys = ("platform", "platform_video_id", "url", "title", "published_at", "duration_s", "language", "method")
+        return json.dumps(
+            {"channel": name, "url": source["url"], "videos": [
+                {**{k: video.get(k) for k in keys}, "text": " ".join(s["text"] for s in segments), "segments": segments}
+                for video, segments in videos]},
+            ensure_ascii=False, indent=1)
+    if fmt == "md":
+        parts = [f"# {name}", "", f"Source: {source['url']}", f"Videos: {len(videos)}"]
+        for video, segments in videos:
+            parts += ["", "---", "", "#" + render(video, segments, "md").rstrip()]
+        return "\n".join(parts) + "\n"
+    if fmt == "txt":
+        parts = [f"{name}\n{source['url']}\n{len(videos)} videos"]
+        for video, segments in videos:
+            head = f"{video.get('title') or video['url']}\n{video['url']}"
+            if video.get("published_at"):
+                head += f"\n{video['published_at'][:10]}"
+            parts.append(f"{'=' * 72}\n{head}\n\n{render(video, segments, 'txt').rstrip()}")
+        return "\n\n".join(parts) + "\n"
+    raise ValueError(f"unknown export format: {fmt}")
+
+
+def safe_name(text: str, fallback: str = "video") -> str:
+    """A file name that is safe inside a zip and on any disk."""
+    import re
+
+    cleaned = re.sub(r"[^\w\- ]+", "", text or "", flags=re.UNICODE).strip().replace(" ", "_")[:60]
+    return cleaned or fallback
+
+
 def render(video: dict, segments: list[dict], fmt: str) -> str:
     if fmt not in FORMATS:
         raise ValueError(f"unknown export format: {fmt}")

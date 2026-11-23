@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, useApi } from "@/lib/api";
 
-type Settings = { whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string; youtube_delay_s: string; youtube_per_hour: string; resync_hours: string };
+type Settings = { whisper_model: string; device: string; language: string; translate: string; tiktok_delay_s: string; youtube_delay_s: string; youtube_per_hour: string; skip_repeats: string; resync_hours: string };
 type System = { ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; alive: boolean; device: string | null; model: string | null };
 
 const MODELS = [
@@ -146,6 +146,13 @@ export default function SettingsPage() {
             <h2 id="resync-heading" className="text-xl font-semibold">
               New videos
             </h2>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input type="checkbox" className="mt-1 size-4 accent-[var(--murex)]" checked={values.skip_repeats === "1"} onChange={(event) => save({ skip_repeats: event.target.checked ? "1" : "0" })} />
+              <span>
+                <span className="block text-sm font-medium">Skip re-uploads</span>
+                <span className="block text-sm text-mute">A video with the same title and length as an earlier one in the same channel is listed but not transcribed again. Videos that turn out to say the same words as another are always marked and left out of search.</span>
+              </span>
+            </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium">Check channels for new videos</span>
               <select className={field} value={String(Number(values.resync_hours))} onChange={(event) => save({ resync_hours: Number(event.target.value) })}>

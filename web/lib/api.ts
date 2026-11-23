@@ -29,6 +29,8 @@ export type Video = {
   source_title?: string | null;
   source_handle?: string | null;
   source_kind?: string;
+  duplicate_of?: number | null;
+  duplicate_kind?: "repeat" | "clip" | null;
   channel_name?: string | null;
   channel_url?: string | null;
 };
@@ -91,6 +93,7 @@ export type Hit = {
 };
 
 export type Snapshot = {
+  paused: Platform[];
   pauses: { platform: Platform; until: number; reason: "refused" | "budget" }[];
   platforms: Record<Platform, PlatformCounts>;
   counts: Partial<Record<Status, number>>;
@@ -205,7 +208,7 @@ export function kindLabel(platform: Platform, kind: Source["kind"]): string {
   return `${platformName(platform)} ${names[kind]}`;
 }
 
-export function statusLabel(video: Pick<Video, "status" | "method" | "progress">): string {
+export function statusLabel(video: Pick<Video, "status" | "method" | "progress"> & { duplicate_of?: number | null }): string {
   switch (video.status) {
     case "done":
       return video.method === "whisper" ? "Transcribed by Whisper" : "From captions";
@@ -220,7 +223,7 @@ export function statusLabel(video: Pick<Video, "status" | "method" | "progress">
     case "failed":
       return "Failed";
     case "skipped":
-      return "Unavailable";
+      return "duplicate_of" in video && video.duplicate_of ? "Repeat, not transcribed" : "Unavailable";
     default:
       return "Not started";
   }

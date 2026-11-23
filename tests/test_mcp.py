@@ -45,7 +45,8 @@ def test_the_four_tools_work_over_stdio(seeded):
     assert call("tools/list") == ["add_source", "get_transcript", "list_sources", "search"]
 
     hit = call("search", query="elephants")["hits"][0]
-    assert (hit["video_id"], hit["at"]) == (video_id, "0:01")
+    assert (hit["video_id"], hit["at"], hit["match"]) == (video_id, "0:01", "all words")
+    assert "Do not guess" in call("search", query="xylophone")["notice"]
     assert hit["url"] == "https://www.youtube.com/watch?v=jNQXAC9IVRw&t=1s"
 
     by_link = call("get_transcript", video="https://youtu.be/jNQXAC9IVRw", timestamps=True)

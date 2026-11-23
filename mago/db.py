@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS videos (
     transcribed_at TEXT,
     channel_name TEXT,
     channel_url TEXT,
+    channel_uid TEXT,
+    duplicate_of INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+    duplicate_kind TEXT CHECK (duplicate_kind IN ('repeat','clip')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (platform, platform_video_id)
 );
@@ -65,6 +68,34 @@ END;
 CREATE TRIGGER IF NOT EXISTS segments_ad AFTER DELETE ON segments BEGIN
     INSERT INTO segments_fts(segments_fts, rowid, text) VALUES ('delete', old.id, old.text);
 END;
+-- Passages: a few caption lines joined, searched together with the video title. A phrase that
+-- runs across two caption lines is found here, and plain-language questions rank better.
+CREATE TABLE IF NOT EXISTS passages (
+    id INTEGER PRIMARY KEY,
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    start_s REAL NOT NULL,
+    end_s REAL NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'speech' CHECK (kind IN ('speech','description')),
+    title TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS passages_video ON passages(video_id, start_s);
+CREATE VIRTUAL TABLE IF NOT EXISTS passages_fts USING fts5(
+    title, text, content='passages', content_rowid='id', tokenize='porter unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER IF NOT EXISTS passages_ai AFTER INSERT ON passages BEGIN
+    INSERT INTO passages_fts(rowid, title, text) VALUES (new.id, new.title, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS passages_ad AFTER DELETE ON passages BEGIN
+    INSERT INTO passages_fts(passages_fts, rowid, title, text) VALUES ('delete', old.id, old.title, old.text);
+END;
+-- A sample of each transcript's word sequences, to spot the same content under another video id.
+CREATE TABLE IF NOT EXISTS fingerprints (
+    video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+    hash INTEGER NOT NULL,
+    PRIMARY KEY (hash, video_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS fingerprints_video ON fingerprints(video_id);
 CREATE TABLE IF NOT EXISTS jobs (
     id INTEGER PRIMARY KEY,
     video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
@@ -109,10 +140,11 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 def _migrate(conn: sqlite3.Connection) -> None:
     """Columns added after the first version (CREATE TABLE IF NOT EXISTS won't add them)."""
     have = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
-    for column in ("channel_name", "channel_url"):
+    for column, kind in (("channel_name", "TEXT"), ("channel_url", "TEXT"), ("channel_uid", "TEXT"),
+                         ("duplicate_of", "INTEGER REFERENCES videos(id) ON DELETE SET NULL"), ("duplicate_kind", "TEXT")):
         if column not in have:
             try:
-                conn.execute(f"ALTER TABLE videos ADD COLUMN {column} TEXT")
+                conn.execute(f"ALTER TABLE videos ADD COLUMN {column} {kind}")
             except sqlite3.OperationalError:  # the other process added it first
                 pass
 
