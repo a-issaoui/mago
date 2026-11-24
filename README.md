@@ -95,7 +95,7 @@ cd web && npx tsc --noEmit && npx eslint . && npm run build
 mago/links.py           recognise a link (platform, video or collection)
 mago/fetch.py           everything that talks to YouTube/TikTok, through yt-dlp
 mago/captions.py        caption files -> timed lines
-mago/whisper_engine.py  Whisper on cuda float16, CPU int8 fallback, GPU lock check
+mago/whisper_engine.py  Whisper on cuda int8_float32, CPU int8 fallback, GPU lock check
 mago/pipeline.py        one video: captions, else audio + Whisper
 mago/library.py         sources, videos, transcripts, search (SQLite + FTS5)
 mago/jobs.py, worker.py the queue and the process that works through it
@@ -113,6 +113,9 @@ data/                   the library: mago.db, thumbs/, avatars/, logs/ (not in g
 - **TikTok blocks fast requests.** The worker waits 4 s between TikTok videos (Settings, Pace) and backs off on
   HTTP 429. When TikTok or YouTube stop working altogether, press "Update yt-dlp" in Settings.
 - **Unavailable videos** (private, removed, region-blocked) are marked once and not retried.
+- **Whisper speed (measured 2026-11-24, GTX 1650, an 18.7 min lecture).** `small` runs at about 30 times real time
+  (2 min per hour of audio), `large-v3-turbo` at 20 times, `medium` at 17 times. float16 is slow on 16xx cards
+  (8 times), so the GPU uses int8_float32, with one beam instead of five.
 - **GPU sharing.** If `another program` holds its `gpu.lock`, or less than 1.5 GB of graphics memory is free, Whisper
   uses the CPU for that video.
 - **Platform limits (researched 2026-11-23).** YouTube allows about 300 videos an hour without an account

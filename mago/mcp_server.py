@@ -627,7 +627,7 @@ def get_settings() -> dict:
 
 
 @tool
-def update_settings(whisper_model: Literal["tiny", "base", "small", "medium"] | None = None,
+def update_settings(whisper_model: Literal["tiny", "base", "small", "medium", "large-v3-turbo"] | None = None,
                     device: Literal["auto", "cuda", "cpu"] | None = None, language: str | None = None,
                     translate_to_english: bool | None = None, tiktok_delay_s: float | None = None,
                     youtube_delay_s: float | None = None, youtube_per_hour: int | None = None,

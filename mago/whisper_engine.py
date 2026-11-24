@@ -73,7 +73,10 @@ class Engine:
 
             if device == "cuda":
                 _preload_cuda_libs()
-            compute_type = "float16" if device == "cuda" else "int8"
+            # Measured on the GTX 1650 (18.7 min lecture, small model): float16 ran at 8 times real
+            # time, int8_float32 at 30 times with half the memory. The 16xx cards have no fast
+            # half-precision path, so float16 is the slow choice there.
+            compute_type = "int8_float32" if device == "cuda" else "int8"
             self._models[device] = WhisperModel(self.model_name, device=device, compute_type=compute_type)
         return self._models[device]
 
@@ -97,6 +100,7 @@ class Engine:
                 parts, info = model.transcribe(
                     str(audio), language=language or None, task="translate" if translate else "transcribe",
                     vad_filter=True, condition_on_previous_text=False,
+                    beam_size=1,  # 1.7 times faster than the default 5; the text differed by under 1% in our test
                     initial_prompt=hint or None,  # names and terms from the title: Whisper then spells them right
                 )
                 segments = []

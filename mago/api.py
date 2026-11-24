@@ -78,7 +78,7 @@ class UrlBody(BaseModel):
 
 
 class SettingsBody(BaseModel):
-    whisper_model: Literal["tiny", "base", "small", "medium"] | None = None
+    whisper_model: Literal["tiny", "base", "small", "medium", "large-v3-turbo"] | None = None
     device: Literal["auto", "cuda", "cpu"] | None = None
     language: str | None = Field(default=None, pattern=r"^[a-z]{0,3}$")
     translate: Literal["0", "1"] | None = None
