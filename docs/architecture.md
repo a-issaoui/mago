@@ -47,7 +47,9 @@ as systemd user services.
 pydantic and reports what importing would do before anything changes. Importing creates the collections and adds
 each link as a source in one transaction. A single video already in the library is filed at once. A channel or
 playlist is recorded in `collection_sources`; when the worker lists it, every video it returns is filed in that
-collection, whether or not the video already belonged to another source. Local `file://` links are never accepted
+collection, whether or not the video already belonged to another source. Each filed video gets a position (the link's place
+in the list, then its place inside the playlist), which is what a collection sorts by, and the list's note is kept
+beside the video or the playlist. Local `file://` links are never accepted
 from a list.
 
 ## The queue

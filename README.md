@@ -287,7 +287,12 @@ The format is small enough to write by hand:
   channel is transcribed**, so check the counts before importing.
 - Text around the JSON (a sentence, a code fence) is ignored. A list with a single section, or a flat
   `"items"` list, goes straight into one collection.
-- Importing the same list again adds nothing twice. A list can hold up to 500 links.
+- **The AI's order is kept.** A collection made from a list shows its videos in the list's order, and a
+  playlist's videos in the playlist's order. Videos you add by hand afterwards come last.
+- **The AI's notes are kept.** The `note` of a single video shows under that video in the collection; the note of
+  a playlist or channel shows in a "From the list" panel at the top, with a link to it.
+- Importing the same list again adds nothing twice; it only moves things to where the list now puts them.
+  A list can hold up to 500 links.
 - AI assistants sometimes invent links. Links that aren't YouTube, TikTok or a podcast are left out and shown;
   a link to a video that doesn't exist fails once in Activity and is not retried.
 - An assistant connected through MCP can skip the copy and paste and use the `import_list` tool.

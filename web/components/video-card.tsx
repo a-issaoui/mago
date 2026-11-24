@@ -37,6 +37,7 @@ export function VideoCard({ video, showSource = false, eager = false }: { video:
             {showSource && video.source_title && video.source_title !== video.title && video.shape === "wide" ? `${video.source_title}, ${meta}` : meta}
           </span>
         </p>
+        {video.note && <p className="mt-1.5 line-clamp-3 border-l-2 border-murex/50 pl-2 text-xs leading-snug text-mute">{video.note}</p>}
       </div>
     </Link>
   );

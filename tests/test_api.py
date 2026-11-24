@@ -280,6 +280,26 @@ def test_import_a_list_made_by_an_ai(client, monkeypatch):
     assert client.get("/api/videos", params={"collection_id": names["1. Basics"]["id"]}).json()["total"] == 1
     assert client.get("/api/videos", params={"collection_id": top["id"]}).json()["total"] == 1  # the outer one shows it too
 
+    # The single video arrives after the playlist was listed, yet the list put it second: order follows the list.
+    conn = db.connect()
+    single = conn.execute("SELECT id FROM sources WHERE url LIKE '%aaaaaaaaaaa'").fetchone()["id"]
+    monkeypatch.setattr(fetch, "list_videos", lambda link, limit=None, **_: iter(
+        [{"platform_video_id": "aaaaaaaaaaa", "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa", "title": "A talk"}]))
+    library.sync_source(conn, single)
+    conn.execute("INSERT INTO videos(source_id, platform, platform_video_id, url, title) VALUES (?, 'youtube', 'ddddddddddd', 'u', 'By hand')", (single,))
+    by_hand = conn.execute("SELECT id FROM videos WHERE platform_video_id = 'ddddddddddd'").fetchone()["id"]
+    conn.close()
+    client.post(f"/api/collections/{names['1. Basics']['id']}/videos", json={"video_id": by_hand})
+    listed = client.get("/api/videos", params={"collection_id": top["id"], "sort": "list"}).json()["items"]
+    assert [video["title"] for video in listed] == ["Lecture 1", "A talk", "By hand"]  # added by hand comes last
+    assert [video["note"] for video in listed] == [None, None, None]  # the playlist's note stays with the playlist
+    filed = client.get(f"/api/collections/{top['id']}").json()["sources"]
+    assert [(source["kind"], source["note"]) for source in filed] == [("playlist", "The course")]
+    noted = LIST.replace('"https://youtu.be/aaaaaaaaaaa",', '{"url": "https://youtu.be/aaaaaaaaaaa", "note": "Watch  this first"},')
+    assert client.post("/api/lists", json={"text": noted}).json()["filed"] == 1  # known now: filed, and its note kept
+    listed = client.get("/api/videos", params={"collection_id": top["id"], "sort": "list"}).json()["items"]
+    assert listed[1]["note"] == "Watch this first"
+
     again = client.post("/api/lists", json={"text": LIST}).json()  # importing twice adds nothing new
     assert again["collection_id"] == top["id"] and len(client.get("/api/collections").json()) == 3
     assert conn_count("sources") == 3

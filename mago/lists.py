@@ -173,7 +173,7 @@ def apply(conn: sqlite3.Connection, found: LinkList) -> dict:
     top = conn.execute("SELECT id, parent_id FROM collections WHERE name = ?", (found.title,)).fetchone()
     if top and top["parent_id"] is not None and len(found.sections) > 1:
         raise BadList(f"There is already a collection called {found.title} inside another one. Rename it or the list, then import again.")
-    queued = filed = 0
+    queued = filed = place = 0
     skipped: list[dict] = []
     seen: set[str] = set()
     conn.execute("BEGIN IMMEDIATE")
@@ -190,13 +190,21 @@ def apply(conn: sqlite3.Connection, found: LinkList) -> dict:
                 if link.url in seen:
                     continue
                 seen.add(link.url)
+                place += 1  # the list's order is kept; importing again moves things to where the list now puts them
+                note = item.note or None
                 video = library.find_video(conn, link.key) if link.kind == "video" else None
                 if video:  # already transcribed or waiting, perhaps inside a channel: just file it
-                    conn.execute("INSERT OR IGNORE INTO collection_videos(collection_id, video_id) VALUES (?, ?)", (collection_id, video["id"]))
+                    conn.execute(
+                        "INSERT INTO collection_videos(collection_id, video_id, position, note) VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(collection_id, video_id) DO UPDATE SET position = excluded.position, note = coalesce(excluded.note, note)",
+                        (collection_id, video["id"], place * library.LIST_STEP, note))
                     filed += 1
                     continue
                 source_id = library.add_source(conn, link.url)
-                conn.execute("INSERT OR IGNORE INTO collection_sources(collection_id, source_id) VALUES (?, ?)", (collection_id, source_id))
+                conn.execute(
+                    "INSERT INTO collection_sources(collection_id, source_id, position, note) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(collection_id, source_id) DO UPDATE SET position = excluded.position, note = coalesce(excluded.note, note)",
+                    (collection_id, source_id, place, note))
                 jobs.enqueue_list(conn, source_id)  # listing it (again) is what files its videos
                 queued += 1
         conn.execute("COMMIT")

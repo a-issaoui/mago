@@ -370,9 +370,11 @@ def list_collections(collection: str | None = None) -> dict:
         if found is None:
             raise ValueError(f"No collection matches {collection!r}. There are: {', '.join(row['name'] for row in rows) or 'none'}.")
         ids = conn.execute(
-            "SELECT DISTINCT video_id FROM collection_videos WHERE collection_id IN "
-            "(SELECT id FROM collections WHERE id = ? OR parent_id = ?) ORDER BY video_id", (found["id"], found["id"]))
-        return {"collection": found, "videos": [_video_summary(library.get_video(conn, row["video_id"])) for row in ids]}
+            "SELECT video_id, max(note) AS note FROM collection_videos WHERE collection_id IN "
+            "(SELECT id FROM collections WHERE id = ? OR parent_id = ?) GROUP BY video_id "
+            "ORDER BY min(collection_id * 1000000000000 + coalesce(position, 999999999999)), video_id", (found["id"], found["id"]))
+        return {"collection": found, "videos": [
+            {**_video_summary(library.get_video(conn, row["video_id"])), **({"note": row["note"]} if row["note"] else {})} for row in ids]}
     finally:
         conn.close()
 

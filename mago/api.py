@@ -316,7 +316,7 @@ def videos(
     conn: sqlite3.Connection = Conn,
     source_id: int | None = None,
     status: Literal["done", "working", "failed", "listed"] | None = None,
-    sort: Literal["newest", "oldest", "views", "longest", "recent", "continue"] = "newest",
+    sort: Literal["newest", "oldest", "views", "longest", "recent", "continue", "list"] = "newest",
     platform: Literal["youtube", "tiktok", "podcast", "file"] | None = None,
     single: bool = False,
     collection_id: int | None = None,
@@ -351,11 +351,20 @@ def videos(
         order = "(SELECT updated_at FROM positions WHERE video_id = v.id) DESC"
     clause = " AND ".join(where)
     total = conn.execute(f"SELECT count(*) FROM videos v JOIN sources s ON s.id = v.source_id WHERE {clause}", params).fetchone()[0]
+    note, first, last = "NULL", [], []
+    if collection_id is not None:
+        # In a collection: what an imported list said about the video, and (sort=list) the list's own order,
+        # section by section. Videos added by hand have no place in a list and come after.
+        member = f"FROM collection_videos m WHERE m.video_id = v.id AND m.collection_id IN ({_FAMILY})"
+        note, first = f"(SELECT m.note {member} AND m.note IS NOT NULL LIMIT 1)", [collection_id, collection_id]
+        if sort == "list":
+            order = f"(SELECT min(m.collection_id * 1000000000000 + coalesce(m.position, 999999999999)) {member}), v.id"
+            last = [collection_id, collection_id]
     rows = conn.execute(
-        f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title, s.handle AS source_handle, "
+        f"SELECT {_VIDEO_LIST_COLUMNS}, s.title AS source_title, s.handle AS source_handle, {note} AS note, "
         "(SELECT seconds FROM positions WHERE video_id = v.id) AS position_s FROM videos v "
         f"JOIN sources s ON s.id = v.source_id WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
-        (*params, limit, offset),
+        (*first, *params, *last, limit, offset),
     )
     return {"total": total, "items": [dict(row) for row in rows]}
 
@@ -498,7 +507,13 @@ def create_collection(body: CollectionBody, conn: sqlite3.Connection = Conn):
 
 @app.get("/api/collections/{collection_id}")
 def collection(collection_id: int, conn: sqlite3.Connection = Conn):
-    return _collection(conn, collection_id)
+    """The collection, with the channels and playlists an imported list filed in it (and what the list said)."""
+    found = _collection(conn, collection_id)
+    found["sources"] = [dict(row) for row in conn.execute(
+        "SELECT s.id, s.title, s.kind, s.platform, s.video_count, m.note FROM collection_sources m "
+        f"JOIN sources s ON s.id = m.source_id WHERE s.kind != 'video' AND m.collection_id IN ({_FAMILY}) "
+        "ORDER BY m.collection_id, m.position IS NULL, m.position, s.id", (collection_id, collection_id))]
+    return found
 
 
 @app.put("/api/collections/{collection_id}")

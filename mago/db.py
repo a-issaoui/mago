@@ -153,6 +153,8 @@ CREATE TABLE IF NOT EXISTS collection_videos (
     collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
     video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
     added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    position INTEGER,  -- where an imported list put it; videos added by hand have none and come last
+    note TEXT,         -- what the list said about it
     PRIMARY KEY (collection_id, video_id)
 );
 CREATE INDEX IF NOT EXISTS collection_videos_video ON collection_videos(video_id);
@@ -160,6 +162,8 @@ CREATE INDEX IF NOT EXISTS collection_videos_video ON collection_videos(video_id
 CREATE TABLE IF NOT EXISTS collection_sources (
     collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
     source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    position INTEGER,  -- its place in the list
+    note TEXT,         -- what the list said about it
     PRIMARY KEY (collection_id, source_id)
 );
 CREATE TABLE IF NOT EXISTS highlights (
@@ -234,6 +238,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE videos ADD COLUMN {column} {kind}")
             except sqlite3.OperationalError:  # the other process added it first
                 pass
+    for table in ("collection_videos", "collection_sources"):  # an imported list's order and notes
+        have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for column, kind in (("position", "INTEGER"), ("note", "TEXT")):
+            if column not in have:
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+                except sqlite3.OperationalError:
+                    pass
     if "parent_id" not in {row["name"] for row in conn.execute("PRAGMA table_info(collections)")}:
         try:
             conn.execute("ALTER TABLE collections ADD COLUMN parent_id INTEGER REFERENCES collections(id) ON DELETE SET NULL")

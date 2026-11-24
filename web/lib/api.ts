@@ -8,6 +8,7 @@ export type Shape = "wide" | "tall";
 export type Status = "listed" | "queued" | "captions" | "downloading" | "transcribing" | "done" | "failed" | "skipped";
 
 export type Video = {
+  note?: string | null; // inside a collection: what an imported list said about it
   id: number;
   source_id: number;
   platform: Platform;
@@ -45,7 +46,16 @@ export type HighlightRow = Highlight & {
   video_id: number; title: string | null; platform: Platform; thumb_path: string | null; thumb_blur: string | null; shape: Shape;
   source_title: string | null; created_at: string;
 };
-export type Collection = { id: number; name: string; videos: number; covers: Cover[]; parent_id: number | null; children: number };
+export type Collection = {
+  id: number;
+  name: string;
+  videos: number;
+  covers: Cover[];
+  parent_id: number | null;
+  children: number;
+  // Channels and playlists an imported list filed here, with what the list said about each.
+  sources?: { id: number; title: string | null; kind: Source["kind"]; platform: Platform; video_count: number | null; note: string | null }[];
+};
 
 /** Collections in menu order: each top-level one followed by those inside it. */
 export function collectionTree(all: Collection[]): { collection: Collection; inside: boolean }[] {

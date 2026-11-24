@@ -13,6 +13,9 @@ _VIDEO_COLUMNS = ("url", "title", "description", "published_at", "duration_s", "
 _EXTRA_COLUMNS = ("channel_name", "channel_url", "channel_uid", "chapters")  # known only after the video itself has been read
 
 
+LIST_STEP = 100_000  # room for the videos of one playlist between two links of an imported list
+
+
 def add_source(conn: sqlite3.Connection, raw_url: str, preview: dict | None = None) -> int:
     """Register a link (idempotent). Listing its videos is a separate step."""
     link = detect(raw_url)
@@ -104,9 +107,19 @@ def sync_source(conn: sqlite3.Connection, source_id: int, limit: int | None = No
 def file_in_collections(conn: sqlite3.Connection, source_id: int, video_ids: list[int]) -> None:
     """Put the videos a source just listed into the collections that source was filed in (by an
     imported list). Goes by what was listed, not by owner: a playlist's videos can belong to a channel."""
-    for row in conn.execute("SELECT collection_id FROM collection_sources WHERE source_id = ?", (source_id,)).fetchall():
-        conn.executemany("INSERT OR IGNORE INTO collection_videos(collection_id, video_id) VALUES (?, ?)",
-                         [(row["collection_id"], video_id) for video_id in video_ids])
+    rows = conn.execute(
+        "SELECT m.collection_id, m.position, m.note, s.kind FROM collection_sources m JOIN sources s ON s.id = m.source_id "
+        "WHERE m.source_id = ?", (source_id,)).fetchall()
+    for row in rows:
+        # The link's place in the list, then the video's place inside the playlist or channel.
+        # A note on a single video is that video's; a note on a playlist stays with the playlist.
+        note = row["note"] if row["kind"] == "video" else None
+        conn.executemany(
+            "INSERT INTO collection_videos(collection_id, video_id, position, note) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(collection_id, video_id) DO UPDATE SET position = coalesce(excluded.position, position), "
+            "note = coalesce(excluded.note, note)",
+            [(row["collection_id"], video_id, None if row["position"] is None else row["position"] * LIST_STEP + rank, note)
+             for rank, video_id in enumerate(video_ids)])
 
 
 def set_status(conn: sqlite3.Connection, video_id: int, status: str, error: str | None = None, progress: float = 0) -> None:
