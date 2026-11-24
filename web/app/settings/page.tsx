@@ -24,7 +24,7 @@ const MODELS = [
   { value: "base", label: "Base: fast" },
   { value: "small", label: "Small: good balance" },
   { value: "medium", label: "Medium: more accurate, slower" },
-  { value: "large-v3-turbo", label: "Turbo: most accurate, about 20 times real time" },
+  { value: "large-v3-turbo", label: "Turbo: most accurate" },
 ];
 const DEVICES = [
   { value: "auto", label: "Graphics card when it is free" },
