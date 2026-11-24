@@ -1,19 +1,28 @@
 # Mago
 
 [![CI](https://github.com/a-issaoui/mago/actions/workflows/ci.yml/badge.svg)](https://github.com/a-issaoui/mago/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)
+![Next.js 16](https://img.shields.io/badge/next.js-16-black.svg)
 
 **A private, local transcript library.** Paste a YouTube or TikTok link (one video, or a whole channel, playlist
 or profile), a podcast feed, or drop a file. Mago turns it into text with timestamps that you can read, search and
 export. Everything runs on your own computer: no accounts, no API keys, no cloud service.
 
-![The library](docs/screenshots/library.png)
+![Searching the library and opening a video at the moment found](docs/screenshots/demo.gif)
 
-| Read along with the video | Search what was said |
-| --- | --- |
-| ![A video with its transcript](docs/screenshots/video.png) | ![Search results](docs/screenshots/search.png) |
+| The library | Read along with the video | Search what was said |
+| --- | --- | --- |
+| ![The library](docs/screenshots/library.png) | ![A video with its transcript](docs/screenshots/video.png) | ![Search results](docs/screenshots/search.png) |
+
+Thumbnails are blurred here because they belong to the channels shown.
+
+**Stack:** Python 3.12, FastAPI, SQLite (FTS5), faster-whisper, yt-dlp, MCP · Next.js 16, React 19, TypeScript,
+Tailwind 4, shadcn/ui · pytest, Playwright, GitHub Actions.
 
 ## Contents
 
+- [Engineering decisions](#engineering-decisions)
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -31,6 +40,32 @@ export. Everything runs on your own computer: no accounts, no API keys, no cloud
 - [Things to know](#things-to-know)
 - [Security](#security)
 - [Terms of service](#terms-of-service)
+- [How it was built](#how-it-was-built)
+- [License](#license)
+
+## Engineering decisions
+
+The choices that shaped the project, each with its reason. [docs/architecture.md](docs/architecture.md) has more.
+
+- **SQLite is the database, the job queue and the search engine.** One file in WAL mode replaces Postgres, Redis
+  and Elasticsearch. Jobs are claimed inside `BEGIN IMMEDIATE`, partial unique indexes make double-queuing
+  impossible, and FTS5 indexes are kept in step by triggers. The whole install is two commands.
+- **Measure before tuning.** Whisper was benchmarked on the target card in seven configurations. The usual advice
+  (`float16`) was the slow option on a GTX 1650; `int8_float32` with one beam was six times faster than the
+  starting point with under 1% difference in the text. The numbers are in
+  [Whisper models and speed](#whisper-models-and-speed).
+- **A refusal is about the address, not the video.** When a platform answers HTTP 429, retrying that video is
+  pointless. The worker pauses the whole platform with a doubling wait, releases the job without spending a
+  retry, and stores the strike count so a restart doesn't start knocking again.
+- **Live updates from one counter.** Database triggers bump a revision number on every visible change; the API
+  streams it over SSE. Changes made by the worker, the API or an AI client all reach the browser the same way,
+  with no event bus.
+- **No accounts, so the boundary is the machine.** Loopback-only sockets, a host allow-list against DNS rebinding,
+  and a required header on writes against cross-site requests. See [Security](#security).
+- **An AI client is a first-class user.** The MCP server exposes the library as 21 tools, with destructive ones
+  behind an explicit confirmation and transcripts marked as untrusted content.
+- **Tested where it counts.** 70 offline tests cover the queue, the API guards, link recognition and caption
+  parsing; 38 browser checks cover every screen at three widths; a separate suite runs against real links.
 
 ## What it does
 
@@ -69,7 +104,7 @@ won't work.
 ## Install
 
 ```bash
-git clone git@github.com:a-issaoui/mago.git
+git clone https://github.com/a-issaoui/mago.git
 cd mago
 bin/mago setup
 ```
@@ -372,3 +407,13 @@ delete the library and make it download things.
 Downloading in bulk is against the terms of service of YouTube and TikTok. Mago is a private research tool: use
 it for your own study, respect the rights of the people whose work you transcribe, and do not offer it as a
 public service.
+
+## How it was built
+
+Mago was built with [Claude Code](https://claude.com/claude-code), an AI programming tool, which wrote the code.
+I set the goals, made the product and design decisions, and reviewed the results in the running app. The commit
+history records that process, session by session.
+
+## License
+
+[MIT](LICENSE)

@@ -3,6 +3,8 @@ name = "mago"
 version = "0.1.0"
 description = "Private, local transcripts for YouTube, TikTok, podcasts and your own files, with search and an MCP server"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "yt-dlp", "yt-dlp-ejs", "faster-whisper", "av<19",  # faster-whisper 1.2.1 breaks on av 19
