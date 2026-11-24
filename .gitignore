@@ -6,5 +6,6 @@ __pycache__/
 node_modules/
 .next/
 .env*
+!.env.example
 .playwright-mcp/
 mago.egg-info/

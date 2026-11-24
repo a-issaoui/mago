@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Start, stop or check Mago's three processes: API, worker and web interface.
+# Install Mago, and start, stop or check its three processes: API, worker and web interface.
+#   bin/mago setup                             install everything (safe to run again after an update)
 #   bin/mago start | stop | restart | status [api|worker|web]
 #   bin/mago install-boot | uninstall-boot     start with the computer (systemd user services)
+# Settings come from the environment or from a .env file next to this folder (see .env.example).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUN="$ROOT/data/run"; LOGS="$ROOT/data/logs"
+if [[ -f "$ROOT/.env" ]]; then set -a; . "$ROOT/.env"; set +a; fi  # shellcheck disable=SC1091
+DATA="${MAGO_DATA:-$ROOT/data}"
+RUN="$DATA/run"; LOGS="$DATA/logs"
 mkdir -p "$RUN" "$LOGS"
 API_PORT="${MAGO_API_PORT:-8010}"; WEB_PORT="${MAGO_WEB_PORT:-3010}"
 
@@ -16,13 +20,16 @@ command_for() {
   esac
 }
 
+# setsid gives each process its own group so "stop" can end its children too. macOS has no setsid.
+DETACH="$(command -v setsid || true)"
+
 alive() { [[ -f "$RUN/$1.pid" ]] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
 
 start_plain() {
   if alive "$1"; then echo "$1 already running"; return; fi
   cd "$ROOT"
   # shellcheck disable=SC2046
-  MAGO_API="http://127.0.0.1:$API_PORT" setsid nohup $(command_for "$1") >>"$LOGS/$1.log" 2>&1 &
+  MAGO_API="http://127.0.0.1:$API_PORT" $DETACH nohup $(command_for "$1") >>"$LOGS/$1.log" 2>&1 &
   echo $! >"$RUN/$1.pid"
   echo "$1 started"
 }
@@ -48,7 +55,35 @@ stop_plain() {
 UNITS="$HOME/.config/systemd/user"
 managed() { [[ -f "$UNITS/mago-$1.service" ]]; }
 
+need() {
+  command -v "$1" >/dev/null || { echo "Missing: $1. $2"; exit 1; }
+}
+
+setup() {
+  need uv "Install it from https://docs.astral.sh/uv/ (it also fetches Python 3.12 if you don't have it)."
+  need ffmpeg "Install it with your package manager (apt install ffmpeg, dnf install ffmpeg, brew install ffmpeg)."
+  need node "Install Node.js 20 or newer from https://nodejs.org/."
+  need npm "It comes with Node.js."
+  local node_major; node_major="$(node -p 'process.versions.node.split(".")[0]')"
+  [[ "$node_major" -ge 20 ]] || { echo "Node.js $node_major is too old: 20 or newer is needed."; exit 1; }
+  cd "$ROOT"
+  echo "1/3 Python packages"
+  [[ -x .venv/bin/python ]] || uv venv --python 3.12 .venv
+  if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then
+    uv pip install --python .venv/bin/python -r requirements.lock  # the exact versions Mago is tested with
+  fi
+  uv pip install --python .venv/bin/python -e .
+  echo "2/3 Web interface packages"
+  (cd web && npm ci)
+  echo "3/3 Building the web interface"
+  (cd web && npm run build)
+  command -v nvidia-smi >/dev/null && echo "NVIDIA card found: Whisper will use it." \
+    || echo "No NVIDIA card found: Whisper will run on the processor (slower, still works)."
+  echo "Done. Start Mago with: bin/mago start    then open http://127.0.0.1:$WEB_PORT"
+}
+
 install_boot() {
+  command -v systemctl >/dev/null || { echo "install-boot needs systemd (Linux). Use bin/mago start instead."; exit 1; }
   mkdir -p "$UNITS"
   for service in api worker web; do
     cat >"$UNITS/mago-$service.service" <<UNIT
@@ -60,6 +95,7 @@ After=network-online.target
 WorkingDirectory=$ROOT
 Environment=PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=MAGO_API=http://127.0.0.1:$API_PORT
+EnvironmentFile=-$ROOT/.env
 ExecStart=$(command_for "$service")
 Restart=on-failure
 RestartSec=5
@@ -81,7 +117,35 @@ UNIT
     || echo "Mago now starts when you log in. For start at boot, run: sudo loginctl enable-linger $USER"
 }
 
-uninstall_boot() {
+unneed() {
+  command -v "$1" >/dev/null || { echo "Missing: $1. $2"; exit 1; }
+}
+
+setup() {
+  need uv "Install it from https://docs.astral.sh/uv/ (it also fetches Python 3.12 if you don't have it)."
+  need ffmpeg "Install it with your package manager (apt install ffmpeg, dnf install ffmpeg, brew install ffmpeg)."
+  need node "Install Node.js 20 or newer from https://nodejs.org/."
+  need npm "It comes with Node.js."
+  local node_major; node_major="$(node -p 'process.versions.node.split(".")[0]')"
+  [[ "$node_major" -ge 20 ]] || { echo "Node.js $node_major is too old: 20 or newer is needed."; exit 1; }
+  cd "$ROOT"
+  echo "1/3 Python packages"
+  [[ -x .venv/bin/python ]] || uv venv --python 3.12 .venv
+  if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then
+    uv pip install --python .venv/bin/python -r requirements.lock  # the exact versions Mago is tested with
+  fi
+  uv pip install --python .venv/bin/python -e .
+  echo "2/3 Web interface packages"
+  (cd web && npm ci)
+  echo "3/3 Building the web interface"
+  (cd web && npm run build)
+  command -v nvidia-smi >/dev/null && echo "NVIDIA card found: Whisper will use it." \
+    || echo "No NVIDIA card found: Whisper will run on the processor (slower, still works)."
+  echo "Done. Start Mago with: bin/mago start    then open http://127.0.0.1:$WEB_PORT"
+}
+
+install_boot() {
+  command -v systemctl >/dev/null || { echo "install-boot needs systemd (Linux). Use bin/mago start instead."; exit 1; }
   systemctl --user disable --now mago-api.service mago-worker.service mago-web.service 2>/dev/null || true
   rm -f "$UNITS"/mago-{api,worker,web}.service
   systemctl --user daemon-reload
@@ -90,6 +154,7 @@ uninstall_boot() {
 
 action="${1:-status}"; shift || true
 case "$action" in
+  setup) setup; exit ;;
   install-boot) install_boot; exit ;;
   uninstall-boot) uninstall_boot; exit ;;
 esac
@@ -104,6 +169,6 @@ for service in "${services[@]}"; do
     stop) stop "$service" ;;
     restart) if managed "$service"; then systemctl --user restart "mago-$service.service" && echo "$service restarted"; else stop "$service"; sleep 1; start "$service"; fi ;;
     status) if running "$service"; then echo "$service running"; else echo "$service stopped"; fi ;;
-    *) echo "usage: bin/mago start|stop|restart|status [api|worker|web]  |  install-boot | uninstall-boot"; exit 2 ;;
+    *) echo "usage: bin/mago setup  |  start|stop|restart|status [api|worker|web]  |  install-boot | uninstall-boot"; exit 2 ;;
   esac
 done

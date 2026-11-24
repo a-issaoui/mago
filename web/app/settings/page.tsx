@@ -17,7 +17,7 @@ type Settings = {
   youtube_delay_s: string; youtube_per_hour: string; skip_repeats: string; resync_hours: string;
   whisper_for_auto_captions: string; whisper_when_refused: string;
 };
-type System = { ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; alive: boolean; device: string | null; model: string | null };
+type System = { ytdlp_version: string; gpu_free_mb: number; gpu_lock_busy: boolean; mcp_command: string; alive: boolean; device: string | null; model: string | null };
 
 const MODELS = [
   { value: "tiny", label: "Tiny: fastest, rough" },
@@ -82,7 +82,7 @@ export default function SettingsPage() {
   const [updating, setUpdating] = useState(false);
   const { snapshot } = useLive();
   const mcp = snapshot?.mcp;
-  const command = "claude mcp add mago --scope user -- /path/to/mago/.venv/bin/python -m mago.mcp_server";
+  const command = system.data?.mcp_command ?? "";
 
   const save = (patch: Record<string, string | number>) =>
     act(() => api("/settings", { method: "PUT", body: JSON.stringify(patch) }), "Saved. It applies to the next video.").then(settings.reload);

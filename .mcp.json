@@ -1,9 +1,8 @@
 {
   "mcpServers": {
     "mago": {
-      "command": "/path/to/mago/.venv/bin/python",
-      "args": ["-m", "mago.mcp_server"],
-      "cwd": "/path/to/mago"
+      "command": ".venv/bin/python",
+      "args": ["-m", "mago.mcp_server"]
     }
   }
 }

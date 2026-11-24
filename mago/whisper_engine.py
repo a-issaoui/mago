@@ -42,10 +42,10 @@ def free_vram_mb() -> int:
 
 
 def gpu_lock_busy(lock_path: Path | None = None) -> bool:
-    """True while another program holds its exclusive GPU lock (a measurement is
-    running). We only look: the lock is released again immediately."""
+    """True while another program holds the GPU lock file (MAGO_GPU_LOCK).
+    We only look: the lock is released again immediately."""
     lock_path = lock_path or config.GPU_LOCK
-    if not lock_path.exists():
+    if lock_path is None or not lock_path.exists():
         return False
     try:
         with open(lock_path, "rb") as handle:

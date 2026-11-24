@@ -66,6 +66,26 @@ def test_retry_sync_delete(client):
     assert client.post("/api/sources/999/sync").status_code == 404
 
 
+def test_system_gives_the_mcp_command_for_this_install(client):
+    import sys
+
+    command = client.get("/api/system").json()["mcp_command"]
+    assert command.endswith(f"-- {sys.executable} -m mago.mcp_server")
+
+
+def test_env_file_fills_in_only_what_is_not_set(tmp_path, monkeypatch):
+    from mago import config
+
+    monkeypatch.setenv("MAGO_TEST_SET", "kept")
+    monkeypatch.delenv("MAGO_TEST_NEW", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("# a comment\nMAGO_TEST_SET=changed\nMAGO_TEST_NEW='from file'\n\nnot a setting\n")
+    config._load_env_file(env)
+    import os
+
+    assert os.environ["MAGO_TEST_SET"] == "kept" and os.environ.pop("MAGO_TEST_NEW") == "from file"
+
+
 def test_settings_are_validated(client):
     assert client.put("/api/settings", json={"whisper_model": "medium", "tiktok_delay_s": 6}).json()["tiktok_delay_s"] == "6"
     assert client.put("/api/settings", json={"whisper_model": "large-v3"}).status_code == 422

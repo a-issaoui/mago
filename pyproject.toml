@@ -1,11 +1,14 @@
 [project]
 name = "mago"
 version = "0.1.0"
-description = "Transcripts for YouTube and TikTok videos and channels"
+description = "Private, local transcripts for YouTube, TikTok, podcasts and your own files, with search and an MCP server"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "yt-dlp", "yt-dlp-ejs", "faster-whisper", "av<19",  # faster-whisper 1.2.1 breaks on av 19
-    "nvidia-cublas-cu12", "nvidia-cudnn-cu12",
+    # CUDA libraries for GPU Whisper; they only exist for 64-bit Linux. Elsewhere Whisper runs on the CPU.
+    "nvidia-cublas-cu12; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "nvidia-cudnn-cu12; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "fastapi", "uvicorn[standard]", "pillow", "mcp", "httpx", "fastembed",
 ]
 

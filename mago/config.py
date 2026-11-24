@@ -4,6 +4,19 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_env_file(path: Path) -> None:
+    """Read KEY=value lines from .env. Values already in the environment win."""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.strip().partition("=")
+        if sep and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+_load_env_file(ROOT / ".env")
 DATA_DIR = Path(os.environ.get("MAGO_DATA", ROOT / "data"))
 DB_PATH = DATA_DIR / "mago.db"
 THUMBS_DIR = DATA_DIR / "thumbs"
@@ -11,10 +24,12 @@ AVATARS_DIR = DATA_DIR / "avatars"
 AUDIO_DIR = DATA_DIR / "audio"
 BACKUPS_DIR = DATA_DIR / "backups"
 
-# The another program project shares the single GPU through this flock.
-GPU_LOCK = Path(
-    os.environ.get("GPU_LOCKDIR", Path.home() / ".cache" / "gpu-share" / "measuring")
-) / "gpu.lock"
+# Where the interface is opened in a browser (used in links Mago hands out).
+URL = os.environ.get("MAGO_URL", "http://127.0.0.1:3010").rstrip("/")
+
+# Optional: a file another program holds with flock while it needs the whole GPU.
+# While it is held, Whisper uses the CPU.
+GPU_LOCK = Path(os.environ["MAGO_GPU_LOCK"]).expanduser() if os.environ.get("MAGO_GPU_LOCK") else None
 
 DEFAULT_SETTINGS = {
     "whisper_model": "small",

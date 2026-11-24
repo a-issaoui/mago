@@ -741,7 +741,7 @@ def remove_video(video: str, confirm: bool = False) -> dict:
 def services(action: Literal["status", "start", "stop", "restart"] = "status",
              which: Literal["all", "api", "worker", "web"] = "all") -> dict:
     """Mago's three processes: api (the library's HTTP interface), worker (does the transcribing)
-    and web (https://mago.test). Check them, or start, stop or restart them.
+    and web (the interface). Check them, or start, stop or restart them.
 
     Args:
         action: status, start, stop or restart.
@@ -750,7 +750,7 @@ def services(action: Literal["status", "start", "stop", "restart"] = "status",
     command = [str(config.ROOT / "bin" / "mago"), action] + ([] if which == "all" else [which])
     result = subprocess.run(command, capture_output=True, text=True, timeout=120)  # fixed arguments only
     lines = [line for line in (result.stdout + result.stderr).splitlines() if line.strip()]
-    return {"ok": result.returncode == 0, "output": lines, "interface": "https://mago.test"}
+    return {"ok": result.returncode == 0, "output": lines, "interface": config.URL}
 
 
 @tool

@@ -1,11 +1,11 @@
 // Browser smoke tests against the running app. Read-only: nothing is added, changed or removed.
-//   npm run e2e            (MAGO_URL=https://mago.test by default)
+//   npm run e2e            (MAGO_URL=http://127.0.0.1:3010 by default)
 import { chromium } from "playwright-core";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const BASE = process.env.MAGO_URL ?? "https://mago.test";
+const BASE = process.env.MAGO_URL ?? "http://127.0.0.1:3010";
 
 function findBrowser() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;

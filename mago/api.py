@@ -839,7 +839,8 @@ def system(conn: sqlite3.Connection = Conn):
     from .whisper_engine import free_vram_mb, gpu_lock_busy
 
     return {"meaning_index": meaning.coverage(conn), "ytdlp_version": fetch.ytdlp_installed_version(), "gpu_free_mb": free_vram_mb(),
-            "gpu_lock_busy": gpu_lock_busy(), **activity_snapshot(conn)["worker"]}
+            "gpu_lock_busy": gpu_lock_busy(), "mcp_command": f"claude mcp add mago --scope user -- {sys.executable} -m mago.mcp_server",
+            **activity_snapshot(conn)["worker"]}
 
 
 @app.post("/api/system/update-ytdlp")
