@@ -1,21 +1,17 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { CornerLeftUpIcon, FolderInputIcon, FolderPlusIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { Breadcrumb } from "@/components/breadcrumb";
-import { CollectionCard, NewCollectionDialog } from "@/components/collections";
+import { CollectionCard, CollectionMenu } from "@/components/collections";
 import { useLiveKey } from "@/components/live";
 import { PageHeader } from "@/components/page-header";
 import { Pager } from "@/components/pager";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetSkeleton } from "@/components/video-card";
 import { useTitle } from "@/hooks/use-title";
-import { act } from "@/lib/act";
-import { api, useApi, type Collection, type Video } from "@/lib/api";
+import { useApi, type Collection, type Video } from "@/lib/api";
 
 const PAGE = 48;
 
@@ -30,16 +26,6 @@ function CollectionView() {
   const here = collection.data;
   const parent = all.data?.find((other) => other.id === here?.parent_id);
   const inside = (all.data ?? []).filter((other) => other.parent_id === Number(id));
-  // Where this collection may go: a top-level collection, and only if this one holds no collections itself.
-  const targets = here && inside.length === 0 ? (all.data ?? []).filter((other) => other.parent_id === null && other.id !== here.id && other.id !== here.parent_id) : [];
-  const move = (to: Collection | null) =>
-    act(() => api(`/collections/${id}`, { method: "PUT", body: JSON.stringify({ parent_id: to?.id ?? null }) }), to ? `Moved into ${to.name}` : "Moved to the top").then(() => {
-      collection.reload();
-      all.reload();
-    });
-  const [adding, setAdding] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState("");
   useTitle(collection.data?.name);
 
   if (collection.error && !collection.data) {
@@ -64,57 +50,23 @@ function CollectionView() {
             : undefined
         }
       >
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" size="icon-lg" aria-label="More actions for this collection" />}>
-            <MoreHorizontalIcon />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuItem
-              onClick={() => {
-                setName(collection.data?.name ?? "");
-                setRenaming(true);
-              }}
-            >
-              <PencilIcon />
-              Rename
-            </DropdownMenuItem>
-            {here && here.parent_id === null && (
-              <DropdownMenuItem onClick={() => setAdding(true)}>
-                <FolderPlusIcon />
-                New collection inside
-              </DropdownMenuItem>
-            )}
-            {parent && (
-              <DropdownMenuItem onClick={() => move(null)}>
-                <CornerLeftUpIcon />
-                {`Move out of ${parent.name}`}
-              </DropdownMenuItem>
-            )}
-            {targets.map((target) => (
-              <DropdownMenuItem key={target.id} onClick={() => move(target)}>
-                <FolderInputIcon />
-                <span className="truncate">{`Move into ${target.name}`}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={async () => {
-                const gone = await act(() => api(`/collections/${id}`, { method: "DELETE" }).then(() => true), inside.length ? "Collection deleted. The collections inside it are now at the top." : "Collection deleted. Its videos are still in the library.");
-                if (gone) router.push("/");
-              }}
-            >
-              <Trash2Icon />
-              Delete this collection
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {here && (
+          <CollectionMenu
+            collection={here}
+            all={all.data ?? []}
+            onChanged={() => {
+              collection.reload();
+              all.reload();
+            }}
+            onDeleted={() => router.push(parent ? `/k/${parent.id}` : "/")}
+          />
+        )}
       </PageHeader>
 
       {inside.length > 0 && (
         <section aria-label="Collections inside" className="mb-10 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
           {inside.map((child) => (
-            <CollectionCard key={child.id} collection={child} />
+            <CollectionCard key={child.id} collection={child} all={all.data ?? []} onChanged={all.reload} />
           ))}
         </section>
       )}
@@ -133,31 +85,6 @@ function CollectionView() {
         </>
       )}
 
-      <NewCollectionDialog open={adding} onOpenChange={setAdding} parent={here} onCreated={(made) => router.push(`/k/${made.id}`)} />
-      <Dialog open={renaming} onOpenChange={setRenaming}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename collection</DialogTitle>
-          </DialogHeader>
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              const done = await act(() => api(`/collections/${id}`, { method: "PUT", body: JSON.stringify({ name }) }), "Renamed");
-              if (done) {
-                setRenaming(false);
-                collection.reload();
-              }
-            }}
-          >
-            <input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={80} aria-label="Collection name" className="field w-full px-4" />
-            <DialogFooter className="mt-5">
-              <Button type="submit" disabled={!name.trim()}>
-                Save name
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

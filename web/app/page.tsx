@@ -155,7 +155,7 @@ function Library() {
           ) : (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
               {collections.data.filter((collection) => collection.parent_id === null).map((collection) => (
-                <CollectionCard key={collection.id} collection={collection} />
+                <CollectionCard key={collection.id} collection={collection} all={collections.data ?? []} onChanged={collections.reload} />
               ))}
             </div>
           )}

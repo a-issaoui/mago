@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { FolderIcon, FolderPlusIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CornerLeftUpIcon, FolderIcon, FolderInputIcon, FolderPlusIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -84,7 +86,137 @@ export function CollectionPicker({ videoId, collections, memberOf, onChanged }: 
   );
 }
 
-export function CollectionCard({ collection }: { collection: Collection }) {
+/** The "..." menu of a collection: rename, nest, move, delete. Used on its page and on its card. */
+export function CollectionMenu({ collection, all, onChanged, onDeleted, onCard }: { collection: Collection; all: Collection[]; onChanged: () => void; onDeleted?: () => void; onCard?: boolean }) {
+  const router = useRouter();
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const parent = all.find((other) => other.id === collection.parent_id);
+  // Where it may go: a top-level collection, and only if this one holds no collections itself.
+  const targets = collection.children === 0 ? all.filter((other) => other.parent_id === null && other.id !== collection.id && other.id !== collection.parent_id) : [];
+  const move = (to: Collection | null) =>
+    act(() => api(`/collections/${collection.id}`, { method: "PUT", body: JSON.stringify({ parent_id: to?.id ?? null }) }), to ? `Moved into ${to.name}` : "Moved to the top").then(onChanged);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="outline"
+              size={onCard ? "icon" : "icon-lg"}
+              aria-label={`Rename, move or delete ${collection.name}`}
+              className={onCard ? "absolute right-2 top-2 z-10 bg-surface/90 backdrop-blur" : undefined}
+            />
+          }
+        >
+          <MoreHorizontalIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuItem
+            onClick={() => {
+              setName(collection.name);
+              setRenaming(true);
+            }}
+          >
+            <PencilIcon />
+            Rename
+          </DropdownMenuItem>
+          {collection.parent_id === null && (
+            <DropdownMenuItem onClick={() => setAdding(true)}>
+              <FolderPlusIcon />
+              New collection inside
+            </DropdownMenuItem>
+          )}
+          {parent && (
+            <DropdownMenuItem onClick={() => move(null)}>
+              <CornerLeftUpIcon />
+              <span className="truncate">{`Move out of ${parent.name}`}</span>
+            </DropdownMenuItem>
+          )}
+          {targets.map((target) => (
+            <DropdownMenuItem key={target.id} onClick={() => move(target)}>
+              <FolderInputIcon />
+              <span className="truncate">{`Move into ${target.name}`}</span>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+            <Trash2Icon />
+            Delete this collection
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <NewCollectionDialog open={adding} onOpenChange={setAdding} parent={collection} onCreated={(made) => router.push(`/k/${made.id}`)} />
+
+      <Dialog open={renaming} onOpenChange={setRenaming}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename collection</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const done = await act(() => api(`/collections/${collection.id}`, { method: "PUT", body: JSON.stringify({ name }) }), "Renamed");
+              if (done) {
+                setRenaming(false);
+                onChanged();
+              }
+            }}
+          >
+            <input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={80} aria-label="Collection name" className="field w-full px-4" />
+            <DialogFooter className="mt-5">
+              <Button type="submit" disabled={!name.trim()}>
+                Save name
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleting} onOpenChange={setDeleting}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Delete ${collection.name}?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {collection.children > 0
+                ? `Only the grouping is deleted. Its ${collection.children} ${collection.children === 1 ? "collection moves" : "collections move"} to the top, and every video and transcript stays in the library.`
+                : "Only the grouping is deleted. Its videos and their transcripts stay in the library."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                const gone = await act(() => api(`/collections/${collection.id}`, { method: "DELETE" }).then(() => true), "Collection deleted");
+                if (!gone) return;
+                setDeleting(false);
+                onChanged();
+                onDeleted?.();
+              }}
+            >
+              Delete collection
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+/** A collection as a card. With `all` and `onChanged` it also carries the "..." menu. */
+export function CollectionCard({ collection, all, onChanged }: { collection: Collection; all?: Collection[]; onChanged?: () => void }) {
+  return (
+    <div className="relative">
+      {all && onChanged && <CollectionMenu collection={collection} all={all} onChanged={onChanged} onCard />}
+      <CollectionLink collection={collection} />
+    </div>
+  );
+}
+
+function CollectionLink({ collection }: { collection: Collection }) {
   return (
     <Link href={`/k/${collection.id}`} className="panel group block overflow-hidden transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-murex">
       <div className="flex h-24 w-full overflow-hidden bg-raised">
