@@ -6,7 +6,8 @@
 # Settings come from the environment or from a .env file next to this folder (see .env.example).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ -f "$ROOT/.env" ]]; then set -a; . "$ROOT/.env"; set +a; fi  # shellcheck disable=SC1091
+# shellcheck disable=SC1091
+if [[ -f "$ROOT/.env" ]]; then set -a; . "$ROOT/.env"; set +a; fi
 DATA="${MAGO_DATA:-$ROOT/data}"
 RUN="$DATA/run"; LOGS="$DATA/logs"
 mkdir -p "$RUN" "$LOGS"
