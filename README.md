@@ -124,7 +124,9 @@ Copy `.env.example` to `.env` and change what you need. Every value is optional.
 | `MAGO_DATA` | `./data` | Where the library is kept |
 | `MAGO_GPU_LOCK` | none | A file another program holds with `flock` while it needs the whole graphics card. While it is held, Whisper uses the processor. |
 
-After changing ports or hosts, run `bin/mago restart` (and `bin/mago install-boot` again if you use the services).
+After changing a value, run `bin/mago restart`. Two cases need more: a new `MAGO_API_PORT` is built into the web
+interface, so run `bin/mago setup` again first; and if Mago starts with the computer, run `bin/mago install-boot`
+again after changing either port.
 
 Everything else is in the **Settings** screen and applies to the next video, with no restart:
 
