@@ -5,9 +5,11 @@
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)
 ![Next.js 16](https://img.shields.io/badge/next.js-16-black.svg)
 
-**A private, local transcript library.** Paste a YouTube or TikTok link (one video, or a whole channel, playlist
-or profile), a podcast feed, or drop a file. Mago turns it into text with timestamps that you can read, search and
-export. Everything runs on your own computer: no accounts, no API keys, no cloud service.
+**Give AI models the videos they can't watch.** Mago turns a video, or a whole channel, into text an AI can read:
+paste a YouTube or TikTok link (one video, a channel, a playlist, a profile), a podcast feed, or drop a file, and
+you get a transcript with timestamps. Your AI assistant can then search and read the whole library directly, or
+you can hand any model a single file. Everything runs on your own computer: no accounts, no API keys, no cloud
+service.
 
 ![Searching the library and opening a video at the moment found](docs/screenshots/demo.gif)
 
@@ -22,6 +24,7 @@ Tailwind 4, shadcn/ui · pytest, Playwright, GitHub Actions.
 
 ## Contents
 
+- [Why](#why)
 - [Engineering decisions](#engineering-decisions)
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
@@ -30,6 +33,7 @@ Tailwind 4, shadcn/ui · pytest, Playwright, GitHub Actions.
 - [Configuration](#configuration)
 - [A nicer address (optional)](#a-nicer-address-optional)
 - [Using Mago](#using-mago)
+- [Import a list made by an AI](#import-a-list-made-by-an-ai)
 - [Use it from Claude (MCP)](#use-it-from-claude-mcp)
 - [Whisper models and speed](#whisper-models-and-speed)
 - [Your data and backups](#your-data-and-backups)
@@ -42,6 +46,24 @@ Tailwind 4, shadcn/ui · pytest, Playwright, GitHub Actions.
 - [Terms of service](#terms-of-service)
 - [How it was built](#how-it-was-built)
 - [License](#license)
+
+## Why
+
+Language models read text. They can't watch a two-hour lecture, and most of what experts know is said in
+videos, not written down. Mago closes that gap.
+
+- **A whole channel becomes something a model can read.** Hundreds of videos turn into one searchable body of
+  text. An hour of speech is roughly 10,000 to 15,000 tokens, so many videos fit in one conversation.
+- **Answers you can check.** Every line keeps its timestamp, so an AI can say where something was said and you
+  can open the video at that second.
+- **No copy and paste.** Through the built-in MCP server, an assistant such as Claude searches and reads the
+  library itself, and can add new videos to it. For any other model, one click copies or exports a video, or
+  every transcript of a channel, as a single file.
+- **The AI can build the library too.** Ask an assistant to research a topic and answer with a list of videos;
+  Mago imports the list, transcribes everything and files it in the sections the AI chose. See
+  [Import a list made by an AI](#import-a-list-made-by-an-ai).
+- **Done once, kept locally.** Each video is fetched and transcribed one time, then it is yours to search and
+  reuse offline, with nothing sent to a cloud service.
 
 ## Engineering decisions
 
@@ -62,7 +84,7 @@ The choices that shaped the project, each with its reason. [docs/architecture.md
   with no event bus.
 - **No accounts, so the boundary is the machine.** Loopback-only sockets, a host allow-list against DNS rebinding,
   and a required header on writes against cross-site requests. See [Security](#security).
-- **An AI client is a first-class user.** The MCP server exposes the library as 21 tools, with destructive ones
+- **An AI client is a first-class user.** The MCP server exposes the library as 22 tools, with destructive ones
   behind an explicit confirmation and transcripts marked as untrusted content.
 - **Tested where it counts.** 70 offline tests cover the queue, the API guards, link recognition and caption
   parsing; 38 browser checks cover every screen at three widths; a separate suite runs against real links.
@@ -73,6 +95,8 @@ The choices that shaped the project, each with its reason. [docs/architecture.md
   download). When it has none, Mago downloads the audio, transcribes it locally with Whisper, then deletes the audio.
 - **Whole channels.** A channel, playlist or profile link lists every video and works through them in a queue,
   at a pace the platforms tolerate. Channels can be checked again for new videos, by hand or on a schedule.
+- **Lists made by an AI.** An assistant researches a topic and answers with a list; Mago imports it into
+  collections, in the AI's order and sections.
 - **Podcasts and your own files.** A feed address, an Apple Podcasts link, or any audio or video file up to 8 GB.
 - **A library built around thumbnails.** Channels, videos, collections (which can hold other collections), and a
   player that stays in step with the transcript.
@@ -82,7 +106,7 @@ The choices that shaped the project, each with its reason. [docs/architecture.md
 - **Exports.** TXT, Markdown, SRT, VTT and JSON for one video; one file or a zip for a whole channel.
 - **Live.** The queue, progress and new transcripts appear without reloading. Downloads can be stopped and resumed,
   for everything or for one platform.
-- **An MCP server.** Claude can search, read, add to and run the library (21 tools).
+- **An MCP server.** Claude can search, read, add to and run the library (22 tools).
 - **Light and dark themes**, usable from a phone to a wide screen, with a command palette (Ctrl K).
 
 ## Requirements
@@ -218,11 +242,55 @@ finds passages that say it differently. Filter by platform or channel.
 (its menu: "New collection inside", "Move into"). The outer one shows everything inside it. Deleting a collection
 never deletes videos or the collections inside it.
 
+**Give it to an AI.** On a video, "Copy" and "Export" give the transcript as text, Markdown, SRT, VTT or JSON. On
+a channel, the "..." menu has "Copy every transcript" and exports of the whole channel as one file. Or connect an assistant once and let it
+read the library itself: see [Use it from Claude (MCP)](#use-it-from-claude-mcp).
+
 **Keep.** Select text in a transcript to save a highlight, with a note if you like. The Highlights screen lists
 and exports them.
 
 **Watch the queue.** Activity shows what is being transcribed, what is waiting, and anything that failed (with
 Retry). "Stop all downloads" and the per-platform Stop buttons hold the queue; the choice survives restarts.
+
+## Import a list made by an AI
+
+Instead of collecting links yourself, let an AI do the research.
+
+1. On the Library screen, choose "import a list made by an AI" under the paste box.
+2. Write your topic (for example "Learn machine learning from zero, with the maths") and press "Copy the
+   request". Paste it into any assistant that can search the web. The request tells it what to look for and
+   the exact format to answer in.
+3. Paste the answer back (or choose the file) and press "Check the list". Mago shows the sections, how many
+   links are single videos and how many are whole channels or playlists, which are already in your library, and
+   which links it can't use.
+4. Press Import. Mago creates a collection named after the list with one collection inside it per section,
+   queues every link, and files each video where the AI put it.
+
+The format is small enough to write by hand:
+
+```json
+{
+  "title": "Learn machine learning",
+  "sections": [
+    {
+      "title": "1. Maths",
+      "items": [
+        {"url": "https://www.youtube.com/playlist?list=...", "note": "Linear algebra, visually"},
+        {"url": "https://www.youtube.com/watch?v=..."}
+      ]
+    }
+  ]
+}
+```
+
+- A link can be a video, a playlist, a channel, a TikTok profile or a podcast feed. **Every video in a playlist or
+  channel is transcribed**, so check the counts before importing.
+- Text around the JSON (a sentence, a code fence) is ignored. A list with a single section, or a flat
+  `"items"` list, goes straight into one collection.
+- Importing the same list again adds nothing twice. A list can hold up to 500 links.
+- AI assistants sometimes invent links. Links that aren't YouTube, TikTok or a podcast are left out and shown;
+  a link to a video that doesn't exist fails once in Activity and is not retried.
+- An assistant connected through MCP can skip the copy and paste and use the `import_list` tool.
 
 ## Use it from Claude (MCP)
 
@@ -242,7 +310,7 @@ library.
 | For | Tools |
 | --- | --- |
 | Reading | `search`, `get_transcript` (one video), `get_channel_transcripts` (a whole channel, page by page), `list_sources`, `list_videos` |
-| Adding | `transcribe` (a video link: waits and returns the transcript; a channel link: queues every video), `add_source`, `sync_source`, `retry`, `transcribe_file` (a path on this computer) |
+| Adding | `transcribe` (a video link: waits and returns the transcript; a channel link: queues every video), `add_source`, `import_list` (a whole researched list, filed into collections), `sync_source`, `retry`, `transcribe_file` (a path on this computer) |
 | Running | `queue_status`, `queue_control` (stop or resume), `get_settings`, `update_settings`, `export_channel`, `services` (start, stop, restart), `update_ytdlp` |
 | Keeping | `list_highlights`, `list_collections`; prompts `summarize_video` and `summarize_channel` |
 | Deleting | `remove_source`, `remove_video` (both need `confirm=True`) |
@@ -335,6 +403,7 @@ mago/links.py           recognise a link (platform, video or collection)
 mago/fetch.py           everything that talks to YouTube and TikTok, through yt-dlp
 mago/podcasts.py        podcast feeds
 mago/files.py           files you add yourself
+mago/lists.py           import a list of links made by an AI
 mago/captions.py        caption files to timed lines
 mago/whisper_engine.py  Whisper on the graphics card, processor fallback
 mago/pipeline.py        one video: captions, else audio and Whisper

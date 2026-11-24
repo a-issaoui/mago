@@ -41,6 +41,15 @@ as systemd user services.
 6. **Index for meaning** (`meaning.py`). When the queue is empty, the worker embeds passages with a small
    multilingual model for search by meaning.
 
+## Importing a list
+
+`lists.py` reads a list of links out of an AI's answer (JSON, with any text around it ignored), validates it with
+pydantic and reports what importing would do before anything changes. Importing creates the collections and adds
+each link as a source in one transaction. A single video already in the library is filed at once. A channel or
+playlist is recorded in `collection_sources`; when the worker lists it, every video it returns is filed in that
+collection, whether or not the video already belonged to another source. Local `file://` links are never accepted
+from a list.
+
 ## The queue
 
 The `jobs` table is the queue. A job is `pending`, `running`, `done` or `failed`, with a priority (single videos
@@ -68,6 +77,7 @@ One file, in WAL mode, so the API can read while the worker writes.
 | `fingerprints` | What `duplicates.py` compares |
 | `jobs` | The queue |
 | `collections`, `collection_videos`, `highlights`, `positions` | What the reader keeps |
+| `collection_sources` | A channel or playlist filed in a collection by an imported list: each video it lists is filed there too |
 | `settings`, `runtime` | Choices made in Settings; the worker's state (heartbeat, device, pauses) |
 | `revision` | A counter that triggers bump on every visible change |
 | `mcp_sessions` | Which Claude sessions are connected |
