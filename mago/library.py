@@ -74,13 +74,14 @@ def sync_source(conn: sqlite3.Connection, source_id: int, limit: int | None = No
     cut short (TikTok 429) can only add videos, never remove any."""
     link = source_link(conn, source_id)
     listed = new = repeats = 0
-    new_ids = []
+    new_ids, all_ids = [], []
     skip_repeats = db.get_settings(conn)["skip_repeats"] == "1"
     known = conn.execute(
         "SELECT channel_uid FROM videos WHERE channel_url = ? AND channel_uid IS NOT NULL LIMIT 1", (link.url,)
     ).fetchone()
     for fields in fetch.list_videos(link, limit=limit, tiktok_uid=known["channel_uid"] if known else None):
         video_id, is_new = upsert_video(conn, source_id, link.platform, fields)
+        all_ids.append(video_id)
         listed += 1
         if is_new:
             new += 1
@@ -96,7 +97,16 @@ def sync_source(conn: sqlite3.Connection, source_id: int, limit: int | None = No
                 new_ids.append(video_id)
     total = conn.execute("SELECT count(*) FROM videos WHERE source_id = ?", (source_id,)).fetchone()[0]
     conn.execute("UPDATE sources SET video_count = ?, last_synced_at = datetime('now') WHERE id = ?", (total, source_id))
+    file_in_collections(conn, source_id, all_ids)
     return {"listed": listed, "new": new, "repeats": repeats, "new_video_ids": new_ids, "total": total}
+
+
+def file_in_collections(conn: sqlite3.Connection, source_id: int, video_ids: list[int]) -> None:
+    """Put the videos a source just listed into the collections that source was filed in (by an
+    imported list). Goes by what was listed, not by owner: a playlist's videos can belong to a channel."""
+    for row in conn.execute("SELECT collection_id FROM collection_sources WHERE source_id = ?", (source_id,)).fetchall():
+        conn.executemany("INSERT OR IGNORE INTO collection_videos(collection_id, video_id) VALUES (?, ?)",
+                         [(row["collection_id"], video_id) for video_id in video_ids])
 
 
 def set_status(conn: sqlite3.Connection, video_id: int, status: str, error: str | None = None, progress: float = 0) -> None:

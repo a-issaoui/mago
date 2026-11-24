@@ -18,7 +18,7 @@ from typing import Literal
 import anyio
 from mcp.server.mcpserver import MCPServer
 
-from . import config, db, export, fetch, jobs, library
+from . import config, db, export, fetch, jobs, library, lists
 from .links import UnsupportedLink, detect
 
 server = MCPServer(
@@ -513,6 +513,38 @@ async def add_source(url: str) -> dict:
     A channel, playlist or profile link adds EVERY video in it: confirm with the owner first.
     """
     return await transcribe.__wrapped__(url, wait_seconds=0)
+
+
+@tool
+def import_list(title: str, sections: list[dict], confirm: bool = False) -> dict:
+    """Add a whole researched list at once and file it into collections, in the order given.
+
+    Use this when the owner asks for a set of videos on a topic (a study plan, a reading list of talks).
+    Mago makes a collection named `title`, one inside it per section, queues every link and puts each
+    video where the list put it. Only use links you have verified exist; never invent one.
+
+    A channel or playlist link adds EVERY video in it. Call first without `confirm` to see what would
+    happen, show the owner the counts, and call again with confirm=True only once they agree.
+
+    Args:
+        title: Name of the whole list.
+        sections: [{"title": "1. Basics", "items": [{"url": "https://...", "note": "why"}]}], in order.
+        confirm: False shows what would happen; True does it.
+    """
+    conn = db.connect()
+    try:
+        found = lists.LinkList.model_validate({"title": title, "sections": sections})
+        preview = lists.check(conn, found)
+        if not confirm:
+            whole = preview["totals"]["whole"]
+            return {"would_import": preview, "note": "Nothing was changed. " + (
+                f"{whole} of these links are channels or playlists: every video in them will be transcribed. " if whole else ""
+            ) + "Confirm with the owner, then call again with confirm=True."}
+        result = lists.apply(conn, found)
+        return {**result, "open": f"{config.URL}/k/{result['collection_id']}",
+                "blockers": sorted({note for platform in ("youtube", "tiktok") for note in _blockers(conn, platform)})}
+    finally:
+        conn.close()
 
 
 @tool

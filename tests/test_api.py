@@ -239,3 +239,64 @@ def test_collections_and_highlights(client):
     assert client.get("/api/highlights").json() == []
     assert client.delete(f"/api/collections/{collection_id}").status_code == 204
     assert client.get(f"/api/videos/{video_id}").status_code == 200  # the video stays
+
+
+LIST = """Here is your list:
+```json
+{"title": "Learn  Zoology", "sections": [
+  {"title": "1. Basics", "items": [
+    {"url": "https://www.youtube.com/playlist?list=PLabcdefghijklmnop", "note": "The course"},
+    "https://youtu.be/aaaaaaaaaaa",
+    {"url": "https://youtu.be/aaaaaaaaaaa"},
+    {"url": "file://0123456789abcdef.mp4"},
+    {"url": "https://example.com/not-a-video"}]},
+  {"title": "2. Deeper", "items": [{"url": "https://www.youtube.com/watch?v=bbbbbbbbbbb"}]}
+]}
+```
+Enjoy!"""
+
+
+def test_import_a_list_made_by_an_ai(client, monkeypatch):
+    with db.connect() as conn:
+        conn.execute("DELETE FROM collections")
+    checked = client.post("/api/lists/check", json={"text": LIST})
+    assert checked.status_code == 200 and checked.json()["title"] == "Learn Zoology"
+    assert checked.json()["totals"] == {"links": 3, "videos": 2, "whole": 1, "known": 0, "unusable": 2, "repeated": 1}
+    assert client.get("/api/collections").json() == []  # checking changes nothing
+
+    made = client.post("/api/lists", json={"text": LIST})
+    assert made.status_code == 201 and made.json()["queued"] == 3 and len(made.json()["skipped"]) == 2
+    names = {c["name"]: c for c in client.get("/api/collections").json()}
+    top = names["Learn Zoology"]
+    assert top["children"] == 2 and names["1. Basics"]["parent_id"] == top["id"] == made.json()["collection_id"]
+
+    # The worker lists the playlist: its videos land in the section the list put the playlist in.
+    conn = db.connect()
+    playlist = conn.execute("SELECT id FROM sources WHERE kind = 'playlist'").fetchone()["id"]
+    monkeypatch.setattr(fetch, "list_videos", lambda link, limit=None, **_: iter(
+        [{"platform_video_id": "ccccccccccc", "url": "https://www.youtube.com/watch?v=ccccccccccc", "title": "Lecture 1"}]))
+    library.sync_source(conn, playlist)
+    conn.close()
+    assert client.get("/api/videos", params={"collection_id": names["1. Basics"]["id"]}).json()["total"] == 1
+    assert client.get("/api/videos", params={"collection_id": top["id"]}).json()["total"] == 1  # the outer one shows it too
+
+    again = client.post("/api/lists", json={"text": LIST}).json()  # importing twice adds nothing new
+    assert again["collection_id"] == top["id"] and len(client.get("/api/collections").json()) == 3
+    assert conn_count("sources") == 3
+
+
+def conn_count(table):
+    conn = db.connect()
+    try:
+        return conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # noqa: S608 - a fixed name from the test
+    finally:
+        conn.close()
+
+
+def test_a_list_that_cannot_be_read_says_why(client):
+    assert client.post("/api/lists/check", json={"text": "I could not browse the web."}).status_code == 422
+    assert "cut off" in client.post("/api/lists/check", json={"text": '{"title": "x", "sections": [{]}'}).json()["detail"]
+    assert client.post("/api/lists/check", json={"text": '{"title": "x"}'}).status_code == 422
+    flat = client.post("/api/lists/check", json={"text": '{"title": "Talks", "items": ["https://youtu.be/aaaaaaaaaaa"]}'}).json()
+    assert flat["sections"][0]["title"] == "Talks" and flat["totals"]["videos"] == 1
+    assert "{topic}" in client.get("/api/lists/prompt").json()["prompt"]

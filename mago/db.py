@@ -156,6 +156,12 @@ CREATE TABLE IF NOT EXISTS collection_videos (
     PRIMARY KEY (collection_id, video_id)
 );
 CREATE INDEX IF NOT EXISTS collection_videos_video ON collection_videos(video_id);
+-- A channel or playlist filed in a collection (by an imported list): each video it lists goes there too.
+CREATE TABLE IF NOT EXISTS collection_sources (
+    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    PRIMARY KEY (collection_id, source_id)
+);
 CREATE TABLE IF NOT EXISTS highlights (
     id INTEGER PRIMARY KEY,
     video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,

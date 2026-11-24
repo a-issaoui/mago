@@ -22,7 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, export, fetch, files, jobs, library, meaning
+from . import config, db, export, fetch, files, jobs, library, lists, meaning
 from .links import UnsupportedLink, detect
 
 config.ensure_dirs()
@@ -97,6 +97,10 @@ class PositionBody(BaseModel):
 class CollectionBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     parent_id: int | None = None  # the collection this one sits inside; null puts it at the top
+
+
+class ListBody(BaseModel):
+    text: str = Field(min_length=2, max_length=lists.MAX_TEXT)
 
 
 class MemberBody(BaseModel):
@@ -553,6 +557,35 @@ def highlight_rows(conn: sqlite3.Connection, q: str = "", video_id: int | None =
         f"SELECT {_HIGHLIGHT_COLUMNS} FROM highlights h JOIN videos v ON v.id = h.video_id JOIN sources s ON s.id = v.source_id "
         f"WHERE {' AND '.join(where)} ORDER BY h.created_at DESC, h.id DESC LIMIT ?", (*params, limit))
     return [dict(row) for row in rows]
+
+
+@app.get("/api/lists/prompt")
+def list_prompt():
+    """What to give an AI so that it answers with a list Mago can import. {topic} is filled in by the reader."""
+    return {"prompt": lists.PROMPT.replace("{{", "{").replace("}}", "}")}
+
+
+def _read_list(text: str) -> lists.LinkList:
+    try:
+        return lists.parse(text)
+    except lists.BadList as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@app.post("/api/lists/check")
+def check_list(body: ListBody, conn: sqlite3.Connection = Conn):
+    """What importing this list would do. Changes nothing."""
+    return lists.check(conn, _read_list(body.text))
+
+
+@app.post("/api/lists", status_code=201)
+def import_list(body: ListBody, conn: sqlite3.Connection = Conn):
+    """Create the list's collections and queue its links."""
+    found = _read_list(body.text)
+    try:
+        return lists.apply(conn, found)
+    except lists.BadList as error:
+        raise HTTPException(409, str(error)) from error
 
 
 @app.get("/api/highlights")

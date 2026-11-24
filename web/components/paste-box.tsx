@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ImportListDialog } from "@/components/import-list";
 import { PlatformMark } from "@/components/icons";
 import { api, clock, kindLabel, type Preview, type Source } from "@/lib/api";
 
@@ -46,6 +47,7 @@ export function PasteBox({ onAdded }: { onAdded?: () => void }) {
   const [adding, setAdding] = useState(false);
   const [upload, setUpload] = useState<{ name: string; fraction: number } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [importing, setImporting] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
 
   async function sendFile(file: File | undefined) {
@@ -161,9 +163,16 @@ export function PasteBox({ onAdded }: { onAdded?: () => void }) {
                 a file from this computer
               </button>
             )}
+            {!dragging && ". Or "}
+            {!dragging && (
+              <button type="button" onClick={() => setImporting(true)} className="min-h-6 font-medium text-murex underline decoration-transparent underline-offset-4 hover:decoration-current">
+                import a list made by an AI
+              </button>
+            )}
           </p>
         )
       )}
+      <ImportListDialog open={importing} onOpenChange={setImporting} onImported={onAdded} />
       <div aria-live="polite">
         {state.step === "checking" && (
           <div className="flex items-center gap-4 border-t border-line p-4 sm:p-5">
